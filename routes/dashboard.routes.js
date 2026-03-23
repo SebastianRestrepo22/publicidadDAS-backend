@@ -151,7 +151,6 @@ router.get('/stats', async (req, res) => {
       }
     };
 
-    console.log('📊 Dashboard data:', JSON.stringify(dashboardData, null, 2));
     res.json(dashboardData);
 
   } catch (error) {

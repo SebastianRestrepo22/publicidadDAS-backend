@@ -45,19 +45,14 @@ export const upload = multer({
 // 🔴 CONTROLADOR PRINCIPAL - Acepta campo 'voucher'
 export const uploadVoucher = async (req, res) => {
   try {
-    console.log('📤 Recibiendo archivo para voucher...');
-    console.log('📄 Archivo recibido:', req.file);
-    console.log('📋 Campos del body:', req.body);
 
     if (!req.file) {
-      console.log('❌ No se recibió archivo');
       return res.status(400).json({ 
         error: "Debes adjuntar un comprobante" 
       });
     }
 
     const rutaVoucher = `/uploads/vouchers/${req.file.filename}`;
-    console.log('✅ Voucher subido:', rutaVoucher);
 
     res.status(200).json({ 
       message: "Comprobante subido exitosamente", 

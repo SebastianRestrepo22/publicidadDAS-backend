@@ -36,5 +36,4 @@ router.get("/:id", getPedidoClienteById);
 
 router.delete("/:id", deletePedidoCliente);
 
-console.log("✅ Rutas de pedidos registradas");
 export default router;

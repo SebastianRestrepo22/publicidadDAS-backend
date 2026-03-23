@@ -437,11 +437,7 @@ export const searchUsuarios = async (req, res) => {
     try {
         const { search = "", page = 1, limit = 10 } = req.query;
 
-        console.log(` Buscando usuarios: "${search}", página ${page}, límite ${limit}`);
-
         const result = await searchUsuariosModel(search, parseInt(page), parseInt(limit));
-
-        console.log(`✅ Encontrados ${result.total} usuarios`);
 
         res.status(200).json({
             success: true,
@@ -488,8 +484,6 @@ export const getAllUsuariosSimple = async (req, res) => {
 export const searchUsuariosForPedidos = async (req, res) => {
     try {
         const { search = "" } = req.query;
-
-        console.log(`Búsqueda rápida para pedidos: "${search}"`);
 
         const usuarios = await searchUsuariosForPedidosModel(search);
 

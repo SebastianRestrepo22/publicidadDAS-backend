@@ -120,7 +120,7 @@ export const createVentaDesdePedido = async (req, res) => {
       return res.status(400).json({ error: "Ya existe una venta para este pedido" });
     }
 
-    // 🔥 MODIFICADO: Consultar explícitamente MetodoPago para pasarlo al model
+    // MODIFICADO: Consultar explícitamente MetodoPago para pasarlo al model
     const [pedidoRows] = await connection.query(
       `SELECT 
         PedidoClienteId, MetodoPago, ClienteId, ClienteNombre, ClienteTelefono, 
@@ -137,7 +137,7 @@ export const createVentaDesdePedido = async (req, res) => {
     }
     const pedido = pedidoRows[0];
 
-    // 🔥 NUEVO: Extraer MetodoPago para pasarlo al model
+    // NUEVO: Extraer MetodoPago para pasarlo al model
     const metodoPago = pedido.MetodoPago;
 
     const [detallesRows] = await connection.query(
@@ -149,7 +149,7 @@ export const createVentaDesdePedido = async (req, res) => {
       return res.status(400).json({ error: "El pedido no tiene detalles" });
     }
 
-    // 🔥 MODIFICADO: Pasar metodoPago y connection al model
+    // MODIFICADO: Pasar metodoPago y connection al model
     const result = await createVentaFromPedidoModel(pedido, UsuarioVendedorId || null, metodoPago, connection);
 
     if (!result.success) {
@@ -159,7 +159,7 @@ export const createVentaDesdePedido = async (req, res) => {
 
     const VentaId = result.VentaId;
 
-    // 🔥 Los detalles se crean AQUÍ (una sola vez) con la función dedicada
+    // Los detalles se crean AQUÍ (una sola vez) con la función dedicada
     await createDetallesVentaFromPedidoModel(connection, VentaId, detallesRows);
 
     await connection.commit();
@@ -168,7 +168,7 @@ export const createVentaDesdePedido = async (req, res) => {
     const detallesCompletos = await getDetalleVentaByVentaIdModel(VentaId);
     ventaCreada.detalle = detallesCompletos;
 
-    // 🔥 Solo enviar factura si está pagado (no si está pendiente)
+    // Solo enviar factura si está pagado (no si está pendiente)
     if (ventaCreada.Estado === 'pagado' && ventaCreada.ClienteCorreo) {
       try {
         await sendVentaFacturaEmail(
@@ -464,13 +464,11 @@ export const crearVentaDesdePedidoId = async (PedidoClienteId, UsuarioVendedorId
       throw new Error("El pedido no tiene detalles");
     }
 
-    // 🔥 DETERMINAR ESTADO SEGÚN ORIGEN
+    // DETERMINAR ESTADO SEGÚN ORIGEN
     const esLanding = pedido.Origen === 'cliente';
     const estadoVenta = esLanding ? 'pendiente' : 'pagado';
     
-    console.log(`📊 Pedido origen: ${pedido.Origen}, Estado venta: ${estadoVenta}`);
-
-    // 🔥 PASAR EL ESTADO COMO QUINTO PARÁMETRO
+    // PASAR EL ESTADO COMO QUINTO PARÁMETRO
     const result = await createVentaFromPedidoModel(pedido, UsuarioVendedorId, null, connection, estadoVenta);
 
     if (!result.success) {
@@ -487,8 +485,6 @@ export const crearVentaDesdePedidoId = async (PedidoClienteId, UsuarioVendedorId
     const ventaCreada = await getVentaByIdModel(VentaId);
     const detallesCompletos = await getDetalleVentaByVentaIdModel(VentaId);
     ventaCreada.detalle = detallesCompletos;
-
-    console.log(`✅ Venta creada como ${estadoVenta}: ${VentaId}`);
 
     return {
       success: true,
@@ -618,7 +614,6 @@ export const actualizarEstadoVenta = async (req, res) => {
               ventaActualizada.Total,
               ventaActualizada.detalle
             );
-            console.log(`📧 Factura enviada al marcar como pagado: ${ventaActualizada.VentaId}`);
           }
         }
       } catch (emailError) {

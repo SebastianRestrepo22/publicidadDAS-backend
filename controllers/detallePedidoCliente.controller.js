@@ -12,22 +12,8 @@ import {
 export const getDetallesByPedido = async (req, res) => {
   try {
     const pedidoId = req.params.id;
-    console.log(`🔍 [BACKEND] Buscando detalles para pedido: ${pedidoId}`);
     
     const detalles = await getDetallePedidoByPedidoIdModel(pedidoId);
-    
-    console.log(`✅ [BACKEND] Detalles encontrados:`, {
-      cantidad: detalles.length,
-      detalles: detalles.map(d => ({
-        id: d.DetallePedidoClienteId,
-        producto: d.ProductoNombre || d.ProductoId,
-        servicio: d.ServicioNombre || d.ServicioId,
-        color: d.ColorNombre,
-        cantidad: d.Cantidad,
-        precio: d.Precio,
-        subtotal: d.Subtotal
-      }))
-    });
     
     // Asegurar que siempre sea un array
     if (!Array.isArray(detalles)) {
@@ -61,15 +47,6 @@ export const createDetalle = async (req, res) => {
       ColorId 
     } = req.body;
 
-    console.log("📝 [BACKEND] createDetalle recibido:", {
-      PedidoClienteId,
-      ProductoId,
-      ServicioId,
-      ColorId,
-      Cantidad,
-      Precio
-    });
-
     // Validaciones
     if (!PedidoClienteId) {
       return res.status(400).json({ error: "PedidoClienteId es obligatorio" });
@@ -98,8 +75,6 @@ export const createDetalle = async (req, res) => {
       ColorId: ColorId || null
     });
 
-    console.log("✅ [BACKEND] Detalle creado:", nuevoDetalle);
-
     res.status(201).json(nuevoDetalle);
   } catch (error) {
     console.error("❌ [BACKEND] Error al crear detalle:", error);
@@ -117,8 +92,6 @@ export const updateDetalle = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
-
-    console.log(`📝 [BACKEND] Actualizando detalle ${id}:`, updates);
 
     const result = await updateDetallePedidoModel(id, updates);
 
@@ -166,13 +139,9 @@ export const deleteDetalle = async (req, res) => {
 export const deleteDetallesByPedido = async (req, res) => {
   try {
     const { pedidoId } = req.params;
-    
-    console.log(`🗑️ [BACKEND] Eliminando todos los detalles del pedido: ${pedidoId}`);
-    
+        
     const result = await deleteDetallesByPedidoIdModel(pedidoId);
-    
-    console.log(`✅ [BACKEND] ${result.affectedRows} detalles eliminados`);
-    
+        
     res.status(200).json({ 
       message: "Detalles eliminados correctamente",
       affectedRows: result.affectedRows 

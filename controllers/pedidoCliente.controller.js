@@ -22,15 +22,11 @@ import { dbPool } from "../lib/db.js";
 
 export const getPedidosClientes = async (req, res) => {
   try {
-    console.log('🔍 [CONTROLLER] Obteniendo pedidos con paginación');
-
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const filtroCampo = req.query.filtroCampo || null;
     const filtroValor = req.query.filtroValor || null;
     const tipoPago = req.query.tipoPago || null;
-
-    console.log('📦 Parámetros:', { page, limit, filtroCampo, filtroValor, tipoPago });
 
     const offset = (page - 1) * limit;
     let whereClause = '';
@@ -39,7 +35,7 @@ export const getPedidosClientes = async (req, res) => {
     // Construir WHERE clause
     const whereConditions = [];
 
-    // 🔥 NUEVO: Excluir pedidos de landing (origen = 'cliente')
+    // NUEVO: Excluir pedidos de landing (origen = 'cliente')
     whereConditions.push(`p.Origen != 'cliente'`);
 
     if (tipoPago) {
@@ -73,7 +69,7 @@ export const getPedidosClientes = async (req, res) => {
       params.push(`%${filtroValor}%`);
     }
 
-    // 🔥 MISMA LÓGICA: Solo mostrar pedidos que deben estar en el módulo de pedidos
+    // MISMA LÓGICA: Solo mostrar pedidos que deben estar en el módulo de pedidos
     whereConditions.push(`(
       p.MetodoPago = 'contra_entrega' 
       OR 
@@ -110,9 +106,6 @@ export const getPedidosClientes = async (req, res) => {
       LIMIT ${limit} OFFSET ${offset}
     `;
 
-    console.log('📝 Query:', query);
-    console.log('📝 Params WHERE:', params);
-
     // Ejecutar consulta principal
     const [rows] = await dbPool.query(query, params);
 
@@ -125,8 +118,6 @@ export const getPedidosClientes = async (req, res) => {
     `;
 
     const [countResult] = await dbPool.execute(countQuery, params);
-
-    console.log(`✅ ${rows.length} pedidos encontrados de ${countResult[0].total} total`);
 
     // Obtener detalles para cada pedido
     for (let p of rows) {
@@ -160,8 +151,6 @@ export const getPedidosClientes = async (req, res) => {
 export const buscarPedidos = async (req, res) => {
   const { campo, valor, page = 1, limit = 10, tipoPago } = req.query;
 
-  console.log('🔍 [BUSCAR] Parámetros:', { campo, valor, page, limit, tipoPago });
-
   const columnasPermitidas = {
     id: 'p.PedidoClienteId',
     cliente: 'COALESCE(u.NombreCompleto, p.ClienteNombre)',
@@ -187,7 +176,7 @@ export const buscarPedidos = async (req, res) => {
     // Construir condiciones WHERE
     const whereConditions = [];
 
-    // 🔥 NUEVO: Excluir pedidos de landing (origen = 'cliente')
+    // NUEVO: Excluir pedidos de landing (origen = 'cliente')
     whereConditions.push(`p.Origen != 'cliente'`);
 
     // Búsqueda por campo específico
@@ -202,7 +191,7 @@ export const buscarPedidos = async (req, res) => {
       params.push(tipoPago);
     }
 
-    // 🔥 MISMA LÓGICA: Solo mostrar pedidos que deben estar en el módulo de pedidos
+    // MISMA LÓGICA: Solo mostrar pedidos que deben estar en el módulo de pedidos
     whereConditions.push(`(
       p.MetodoPago = 'contra_entrega' 
       OR 
@@ -239,9 +228,6 @@ export const buscarPedidos = async (req, res) => {
       LIMIT ${limitNum} OFFSET ${offset}
     `;
 
-    console.log('📝 [BUSCAR] Query:', query);
-    console.log('📝 [BUSCAR] Params:', params);
-
     const [rows] = await dbPool.query(query, params);
 
     // Consulta para total
@@ -253,9 +239,6 @@ export const buscarPedidos = async (req, res) => {
     `;
 
     const [countResult] = await dbPool.execute(countQuery, params);
-
-    console.log(`✅ [BUSCAR] ${rows.length} resultados de ${countResult[0].total} total`);
-
     // Obtener detalles para cada pedido
     for (let p of rows) {
       try {
@@ -292,8 +275,6 @@ export const createPedidoCliente = async (req, res) => {
   let nuevoPedido = null;
 
   try {
-    console.log('🔍 [CONTROLLER] Creando pedido...');
-    console.log('📦 Body recibido:', req.body);
 
     let pedidoData;
     if (typeof req.body.pedido === 'string') {
@@ -327,8 +308,6 @@ export const createPedidoCliente = async (req, res) => {
       detalle = []
     } = pedidoData;
 
-    console.log('📌 ORIGEN RECIBIDO:', Origen);
-
     // Validar Total
     const totalLimpio = parseFloat(Total);
     if (isNaN(totalLimpio) || totalLimpio <= 0) {
@@ -351,13 +330,11 @@ export const createPedidoCliente = async (req, res) => {
       ? FechaRegistro.split("T")[0]
       : new Date().toISOString().split("T")[0];
 
-    // 🔥 NUEVA LÓGICA:
+    // NUEVA LÓGICA:
     // - Admin: estado = 'pendiente' (aparece en módulo de pedidos)
     // - Landing: estado = 'pendiente' pero va directamente a ventas
     const esLanding = Origen === 'cliente';
     const estadoInicial = "pendiente"; // AMBOS COMIENZAN COMO PENDIENTE
-
-    console.log(`📊 Origen: ${Origen}, Es landing: ${esLanding}, Estado inicial: ${estadoInicial}`);
 
     // Crear pedido (siempre pendiente)
     nuevoPedido = await createPedidoClienteModel({
@@ -376,10 +353,6 @@ export const createPedidoCliente = async (req, res) => {
       ClienteCorreo: ClienteCorreo || null,
       Origen
     });
-
-    console.log("✅ Pedido creado en BD:", nuevoPedido);
-    console.log("📊 Estado guardado en BD:", nuevoPedido.Estado);
-    console.log("📊 Origen guardado:", nuevoPedido.Origen);
 
     // Crear detalles del pedido
     for (let i = 0; i < detalle.length; i++) {
@@ -425,36 +398,7 @@ export const createPedidoCliente = async (req, res) => {
 
     // Obtener pedido completo
     const pedidoCompleto = await getPedidoClienteByIdModel(nuevoPedido.PedidoClienteId);
-    pedidoCompleto.detalle = await getDetallePedidoByPedidoIdModel(nuevoPedido.PedidoClienteId);
-
-    console.log("📦 Pedido completo:", {
-      id: pedidoCompleto.PedidoClienteId,
-      estado: pedidoCompleto.Estado,
-      metodo: pedidoCompleto.MetodoPago,
-      origen: pedidoCompleto.Origen
-    });
-
-    // 🔥 SI ES LANDING, CREAR VENTA AUTOMÁTICAMENTE COMO PENDIENTE
-    if (esLanding) {
-      try {
-        console.log(`💰 Creando venta pendiente para pedido desde landing (${MetodoPago})`);
-
-        const resultadoVenta = await crearVentaDesdePedidoId(pedidoCompleto.PedidoClienteId, null);
-
-        if (resultadoVenta.success) {
-          console.log(`✅ Venta creada automáticamente como PENDIENTE: ${resultadoVenta.VentaId}`);
-          pedidoCompleto.ventaCreada = {
-            id: resultadoVenta.VentaId,
-            estado: 'pendiente', // ← AHORA ES PENDIENTE
-            origen: 'landing'
-          };
-        } else {
-          console.warn(`⚠️ No se pudo crear la venta: ${resultadoVenta.message || 'Error desconocido'}`);
-        }
-      } catch (ventaError) {
-        console.error(`❌ Error creando venta automática:`, ventaError);
-      }
-    }
+    pedidoCompleto.detalle = await getDetallePedidoByPedidoIdModel(nuevoPedido.PedidoClienteId)
 
     // Enviar email de confirmación
     if (pedidoCompleto.ClienteId) {
@@ -505,10 +449,6 @@ export const updatePedidoCliente = async (req, res) => {
   let updates = { ...req.body };
 
   try {
-    console.log('🔍 [PEDIDOS] ===== INICIANDO ACTUALIZACIÓN =====');
-    console.log('📦 ID del pedido:', id);
-    console.log('📦 Updates recibidos:', updates);
-    console.log('📦 Archivo recibido:', req.file);
 
     // Obtener el pedido actual
     const pedidoActual = await getPedidoClienteByIdModel(id);
@@ -523,7 +463,6 @@ export const updatePedidoCliente = async (req, res) => {
       const voucherUrl = `${protocol}://${host}/uploads/vouchers/${req.file.filename}`;
       updates.Voucher = voucherUrl;
 
-      console.log('📎 Nuevo voucher URL:', voucherUrl);
     }
 
     // Si se está actualizando el estado
@@ -610,7 +549,6 @@ export const updatePedidoCliente = async (req, res) => {
             estado: 'pagado',
             mensaje: 'Venta generada al entregar el pedido'
           };
-          console.log(`✅ Venta creada para pedido contra entrega entregado: ${resultadoVenta.VentaId}`);
         } else {
           updated.ventaCreada = {
             id: ventaExistente[0].VentaId,
@@ -625,9 +563,6 @@ export const updatePedidoCliente = async (req, res) => {
 
     // Enviar correo si cambió el estado
     if (updates.Estado && pedidoActual.Estado !== updates.Estado) {
-      console.log('📧 [EMAIL] Preparando envío de correo...');
-      console.log('📧 Estado anterior:', pedidoActual.Estado);
-      console.log('📧 Nuevo estado:', updates.Estado);
 
       let destinatario = null;
       let nombreCliente = 'Cliente';
@@ -637,20 +572,13 @@ export const updatePedidoCliente = async (req, res) => {
         if (cliente) {
           destinatario = cliente.CorreoElectronico;
           nombreCliente = cliente.NombreCompleto;
-          console.log('📧 Cliente encontrado:', { id: cliente.CedulaId, email: destinatario });
-        } else {
-          console.log('⚠️ Cliente no encontrado para ID:', updated.ClienteId);
         }
       } else if (updated.ClienteCorreo) {
         destinatario = updated.ClienteCorreo;
         nombreCliente = updated.ClienteNombre || 'Cliente';
-        console.log('📧 Walk-in cliente:', { email: destinatario, nombre: nombreCliente });
-      } else {
-        console.log('⚠️ No se encontró destinatario para el pedido:', id);
-      }
+      } 
 
       if (destinatario) {
-        console.log(`📧 Enviando correo para estado '${updates.Estado}' a ${destinatario}`);
         sendPedidoEstadoEmail(
           destinatario,
           nombreCliente,
@@ -752,7 +680,7 @@ export const getMisPedidos = async (req, res) => {
     for (let p of pedidos) {
       p.detalle = await getDetallePedidoByPedidoIdModel(p.PedidoClienteId);
 
-      // 🔥 Determinar qué estado mostrar
+      // Determinar qué estado mostrar
       if (p.EsVenta) {
         // Si tiene venta y NO es contra entrega, mostrar estado de la venta
         if (p.MetodoPago?.toLowerCase() !== 'contra_entrega') {

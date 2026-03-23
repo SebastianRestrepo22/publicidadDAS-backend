@@ -177,7 +177,6 @@ export const getAllProducto = async (req, res) => {
 };
 
 // Obtener producto por ID
-// controllers/productos.controller.js
 export const getProductoById = async (req, res) => {
   const { id } = req.params;
   try {
@@ -192,45 +191,26 @@ export const getProductoById = async (req, res) => {
 
     const producto = productoRows[0];
 
-    // 🔥 Obtener colores desde compras para este producto
-    const [coloresDesdeCompras] = await dbPool.query(`
-      SELECT DISTINCT
-        c.ColorId,
-        c.Nombre,
-        c.Hex,
-        COALESCE(pcs.Stock, 0) AS Stock
-      FROM detallecompras dc
-      INNER JOIN colores c ON c.ColorId = dc.ColorId
-      LEFT JOIN productocolores_stock pcs ON pcs.ProductoId = dc.ProductoId AND pcs.ColorId = dc.ColorId
-      WHERE dc.ProductoId = ? AND dc.ColorId IS NOT NULL
-    `, [id]);
-
-    // 🔥 También obtener colores con stock (de compras anteriores)
+    // 🔥 SIMPLIFICADO: Solo obtener colores con stock de productocolores_stock
     const [coloresConStock] = await dbPool.query(`
       SELECT 
         c.ColorId,
         c.Nombre,
         c.Hex,
-        pcs.Stock
+        COALESCE(pcs.Stock, 0) AS Stock
       FROM productocolores_stock pcs
       INNER JOIN colores c ON c.ColorId = pcs.ColorId
-      WHERE pcs.ProductoId = ? AND pcs.Stock > 0
+      WHERE pcs.ProductoId = ?
     `, [id]);
 
-    // Combinar colores únicos (usar Map para evitar duplicados)
-    const coloresMap = new Map();
-    
-    [...coloresDesdeCompras, ...coloresConStock].forEach(color => {
-      if (!coloresMap.has(color.ColorId) || coloresMap.get(color.ColorId).Stock < color.Stock) {
-        coloresMap.set(color.ColorId, color);
-      }
-    });
-
-    const coloresUnicos = Array.from(coloresMap.values());
+    // Si el producto usa colores pero no tiene stock, aún así devolvemos los colores con stock 0
+    // Pero necesitamos saber qué colores están asignados al producto
+    // Para eso necesitas una tabla de relación (producto_colores)
+    // Si no tienes esa tabla, no podrás saber qué colores están asignados sin stock
 
     res.status(200).json({
       ...producto,
-      Colores: coloresUnicos
+      Colores: coloresConStock
     });
   } catch (error) {
     console.error('Error al obtener producto:', error);
@@ -362,11 +342,6 @@ export const deleteProducto = async (req, res) => {
     // ELIMINAR PRIMERO LAS RELACIONES CON COLORES
     await connection.query(
       `DELETE FROM productocolores_stock WHERE ProductoId = ?`,
-      [id]
-    );
-
-    await connection.query(
-      `DELETE FROM productocolores WHERE ProductoId = ?`,
       [id]
     );
 

@@ -28,10 +28,7 @@ export const getColoresProducto = async (req, res) => {
 
 export const updateColoresProducto = async (req, res) => {
   const { id } = req.params;
-  const { colores } = req.body; // [{ ColorId, Stock }, ...]
-
-  console.log('DEBUG - Recibiendo colores para producto:', id);
-  console.log('DEBUG - Colores recibidos:', colores);
+  const { colores } = req.body; 
 
   if (!Array.isArray(colores)) {
     return res.status(400).json({ message: 'colores debe ser un array' });

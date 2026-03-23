@@ -249,7 +249,6 @@ router.get('/validar-telefono', async (req, res) => {
 // Solicitar recuperación de contraseña
 router.post('/forgot-password', async (req, res) => {
 const { correo } = req.body;
-    console.log('📥 /forgot-password recibido:', correo);
 
     try {
         const [usuarios] = await dbPool.execute(
@@ -262,9 +261,8 @@ const { correo } = req.body;
         }
 
         const resetToken = crypto.randomBytes(32).toString('hex');
-        console.log('🔑 Token generado:', resetToken.slice(0, 10) + '...');
 
-        // ✅ CLAVE: Usar DATE_ADD(UTC_TIMESTAMP()) en lugar de calcular en JS
+        // CLAVE: Usar DATE_ADD(UTC_TIMESTAMP()) en lugar de calcular en JS
         const [updateResult] = await dbPool.execute(
             `UPDATE usuarios 
              SET ResetToken = ?, ResetTokenExpire = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
@@ -272,8 +270,6 @@ const { correo } = req.body;
             [resetToken, correo]
         );
         
-        console.log('📊 UPDATE:', { affectedRows: updateResult.affectedRows });
-
         if (updateResult.affectedRows === 0) {
             return res.status(500).json({ message: 'No se pudo guardar el token' });
         }
@@ -494,7 +490,7 @@ router.post('/reset-password/:token', async (req, res) => {
     const { nuevaContrasena } = req.body;
 
     try {
-        // ✅ Buscar usuario con token válido (usando UTC_TIMESTAMP para consistencia)
+        // Buscar usuario con token válido (usando UTC_TIMESTAMP para consistencia)
         const [usuarios] = await dbPool.execute(
             `SELECT * FROM usuarios 
              WHERE ResetToken = ? 
@@ -535,13 +531,12 @@ router.post('/reset-password/:token', async (req, res) => {
         // Hashear nueva contraseña
         const hash = await bcrypt.hash(nuevaContrasena, 10);
 
-        // ✅ Actualizar contraseña y limpiar token (con nombres correctos)
+        // Actualizar contraseña y limpiar token (con nombres correctos)
         await dbPool.execute(
             'UPDATE usuarios SET Contrasena = ?, ResetToken = NULL, ResetTokenExpire = NULL WHERE CedulaId = ?',
             [hash, user.CedulaId]
         );
 
-        console.log('✅ Contraseña actualizada para usuario:', user.CedulaId);
         res.status(200).json({ message: 'Contraseña actualizada exitosamente' });
 
     } catch (error) {

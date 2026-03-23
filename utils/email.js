@@ -1,7 +1,7 @@
 // backend/utils/email.js
 import nodemailer from "nodemailer";
 
-// ✅ CONFIGURACIÓN ÚNICA Y ESTABLE PARA GMAIL (PUERTO 465)
+// CONFIGURACIÓN ÚNICA Y ESTABLE PARA GMAIL (PUERTO 465)
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
@@ -10,19 +10,19 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER,  // tuemail@gmail.com
     pass: process.env.EMAIL_PASS,  // ¡CONTRASEÑA DE APLICACIÓN DE 16 DÍGITOS!
   },
-  pool: true,      // ✅ Reutiliza conexiones (evita "socket close")
+  pool: true,      //  Reutiliza conexiones (evita "socket close")
   maxConnections: 5,
-  rateLimit: true, // ✅ Evita bloqueos por exceso de envíos
+  rateLimit: true, //  Evita bloqueos por exceso de envíos
   rateDelta: 1000,
   rateLimit: 10,
 });
 
-// ✅ Verificar conexión al iniciar la app (opcional pero recomendado)
+//  Verificar conexión al iniciar la app (opcional pero recomendado)
 transporter.verify(function (error, success) {
   if (error) {
     console.error("⚠️ Error de conexión SMTP:", error);
   } else {
-    console.log("✅ Servidor SMTP listo para enviar correos");
+    console.log(" Servidor SMTP listo para enviar correos");
   }
 });
 
@@ -154,7 +154,6 @@ Si no solicitaste crear una cuenta, puedes ignorar este mensaje con seguridad.
       `,
     });
 
-    console.log("✅ Correo de bienvenida enviado a:", correo);
     return true;
   } catch (error) {
     console.error("❌ Error enviando correo de bienvenida:", error.message);
@@ -165,12 +164,6 @@ Si no solicitaste crear una cuenta, puedes ignorar este mensaje con seguridad.
 
 //  NOTIFICAR CAMBIO DE ESTADO DE PEDIDO (ACTUALIZADO CON ESTADOS DE CONTRA ENTREGA)
 export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEstado, motivo = "") => {
-  console.log("🚨🚨🚨 ========== [EMAIL DEBUG] INICIO DE FUNCIÓN ==========");
-  console.log("🚨 Valor recibido en nuevoEstado:", nuevoEstado);
-  console.log("🚨 Tipo de dato:", typeof nuevoEstado);
-  console.log("🚨 Longitud:", nuevoEstado?.length);
-  console.log("🚨 Comparación exacta con 'en_camino':", nuevoEstado === "en_camino");
-  console.log("🚨 Comparación con trim():", nuevoEstado?.trim() === "en_camino");
   
   if (nuevoEstado) {
     console.log("🚨 Caracteres uno por uno:");
@@ -178,18 +171,14 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
       console.log(`  [${i}]: '${nuevoEstado[i]}' (código: ${nuevoEstado.charCodeAt(i)})`);
     }
   }
-  console.log("🚨🚨🚨 ====================================================");
   
   let subject = "";
   let html = "";
   let icono = "";
   let color = "";
 
-  console.log(`📧 [EMAIL] Antes del switch - nuevoEstado = "${nuevoEstado}"`);
-
   switch (nuevoEstado) {
     case "pendiente":
-      console.log("📧 [EMAIL] ✅ Case PENDIENTE ejecutado");
       subject = `📄 Pedido #${pedidoId} recibido`;
       icono = "📄";
       color = "#f59e0b";
@@ -207,13 +196,12 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
       break;
       
     case "aprobado":
-      console.log("📧 [EMAIL] ✅ Case APROBADO ejecutado");
-      subject = `✅ Pedido #${pedidoId} aprobado`;
-      icono = "✅";
+      subject = ` Pedido #${pedidoId} aprobado`;
+      icono = "";
       color = "#10b981";
       html = `
         <div style="text-align: center; margin-bottom: 20px;">
-          <div style="font-size: 48px;">✅</div>
+          <div style="font-size: 48px;"></div>
         </div>
         <p>¡Hola ${nombreCliente}!</p>
         <p>Tu pedido <strong>#${pedidoId}</strong> ha sido <strong style="color: #10b981;">aprobado</strong>.</p>
@@ -224,9 +212,8 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
       `;
       break;
       
-    // 🔥 NUEVO ESTADO: EN PROCESO (Contra Entrega)
+    //  NUEVO ESTADO: EN PROCESO (Contra Entrega)
     case "en_proceso":
-      console.log("📧 [EMAIL] ✅ Case EN_PROCESO ejecutado");
       subject = `🏭 Pedido #${pedidoId} en proceso de producción`;
       icono = "🏭";
       color = "#8b5cf6";
@@ -244,10 +231,8 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
       `;
       break;
       
-    // 🔥 NUEVO ESTADO: EN CAMINO (Contra Entrega)
+    //  NUEVO ESTADO: EN CAMINO (Contra Entrega)
     case "en_camino":
-      console.log("🔥🔥🔥 [EMAIL] ✅ CASE EN_CAMINO EJECUTADO 🔥🔥🔥");
-      console.log("📧 Preparando contenido para EN_CAMINO");
       subject = `🚚 Pedido #${pedidoId} en camino`;
       icono = "🚚";
       color = "#f97316";
@@ -263,11 +248,9 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
           <p style="margin: 0; font-size: 13px; color: #9a3412;">📍 Tu pedido está siendo transportado</p>
         </div>
       `;
-      console.log("📧 HTML generado para EN_CAMINO, longitud:", html.length);
       break;
       
     case "entregado":
-      console.log("📧 [EMAIL] ✅ Case ENTREGADO ejecutado");
       subject = `📦 Pedido #${pedidoId} entregado`;
       icono = "📦";
       color = "#10b981";
@@ -285,7 +268,6 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
       break;
       
     case "cancelado":
-      console.log("📧 [EMAIL] ✅ Case CANCELADO ejecutado");
       subject = `❌ Pedido #${pedidoId} cancelado`;
       icono = "❌";
       color = "#ef4444";
@@ -303,7 +285,6 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
       break;
       
     case "finalizado":
-      console.log("📧 [EMAIL] ✅ Case FINALIZADO ejecutado");
       subject = `✨ Pedido #${pedidoId} finalizado`;
       icono = "✨";
       color = "#6b7280";
@@ -318,21 +299,13 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
       break;
       
     default:
-      console.log(`⚠️ [EMAIL] ESTADO NO MANEJADO EN SWITCH: "${nuevoEstado}"`);
-      console.log(`⚠️ No se enviará correo para este estado`);
       return; // No enviar para estados no manejados
   }
 
-  console.log(`📧 [EMAIL] Después del switch - subject = "${subject}"`);
   
   if (!subject) {
-    console.log(`⚠️ [EMAIL] No se generó subject para estado "${nuevoEstado}", cancelando envío`);
     return;
   }
-
-  console.log(`📧 [EMAIL] Preparando envío SMTP para estado "${nuevoEstado}"`);
-  console.log(`📧 Destinatario: ${to}`);
-  console.log(`📧 Asunto: ${subject}`);
 
   try {
     const info = await transporter.sendMail({
@@ -455,8 +428,6 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
         </html>
       `,
     });
-    console.log(`✅ Correo de estado '${nuevoEstado}' enviado a ${to} para pedido ${pedidoId}`);
-    console.log(`📧 Message ID: ${info.messageId}`);
   } catch (error) {
     console.error(`❌ Error al enviar correo de estado '${nuevoEstado}':`, error.message);
     console.error(`❌ Error completo:`, error);
@@ -535,7 +506,6 @@ export const sendVoucherEmail = async (to, nombreCliente, pedidoId, voucherUrl) 
       subject,
       html,
     });
-    console.log(`✅ Voucher de pago enviado a ${to} para pedido ${pedidoId}`);
   } catch (error) {
     console.error("❌ Error al enviar voucher por correo:", error.message);
   }
@@ -853,7 +823,6 @@ export const sendVentaFacturaEmail = async (to, nombreCliente, ventaId, total, d
       subject,
       html,
     });
-    console.log(`Factura enviada a ${to} para venta ${ventaId}`);
     return true;
   } catch (error) {
     console.error("Error al enviar factura por correo:", error.message);
@@ -914,7 +883,6 @@ export const sendVentaAnuladaEmail = async (to, nombreCliente, ventaId, total) =
       subject,
       html,
     });
-    console.log(`✅ Anulación enviada a ${to} para venta ${ventaId}`);
     return true;
   } catch (error) {
     console.error("❌ Error al enviar anulación:", error.message);
@@ -977,7 +945,6 @@ export const sendVentaRechazadaEmail = async (to, nombreCliente, ventaId, total,
       subject,
       html,
     });
-    console.log(`✅ Notificación de rechazo enviada a ${to} para venta ${ventaId}`);
     return true;
   } catch (error) {
     console.error("❌ Error al enviar notificación de rechazo:", error.message);

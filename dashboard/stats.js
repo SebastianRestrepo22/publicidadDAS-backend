@@ -10,8 +10,6 @@ const calcularVariacion = (actual, anterior) => {
 
 router.get('/dashboard/stats', async (req, res) => {
   try {
-    console.log('🔍 Iniciando carga de dashboard...');
-
     // 1. Ventas mensuales (últimos 6 meses)
     const [ventasMensuales] = await pool.query(`
       SELECT 
@@ -154,7 +152,6 @@ router.get('/dashboard/stats', async (req, res) => {
       }
     };
 
-    console.log('📊 Datos enviados:', JSON.stringify(dashboardData, null, 2));
     res.json(dashboardData);
 
   } catch (error) {

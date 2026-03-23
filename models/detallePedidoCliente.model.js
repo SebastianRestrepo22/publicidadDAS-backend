@@ -83,19 +83,8 @@ export const createDetallePedidoModel = async ({
       ColorId || null
     ];
     
-    console.log("📝 [MODEL] Insertando detalle:", {
-      DetallePedidoClienteId,
-      ProductoId,
-      ServicioId,
-      ColorId,
-      Cantidad,
-      Precio
-    });
-    
     const [result] = await dbPool.execute(query, values);
-    
-    console.log("✅ [MODEL] Detalle creado con ID:", DetallePedidoClienteId);
-    
+        
     // Obtener el detalle recién creado con nombres
     const [nuevoDetalle] = await dbPool.execute(
       `SELECT 
@@ -149,14 +138,12 @@ export const deleteDetallePedidoModel = async (id) => {
 // ========================================
 export const deleteDetallesByPedidoIdModel = async (pedidoId) => {
   try {
-    console.log(`🗑️ [MODEL] Eliminando todos los detalles del pedido: ${pedidoId}`);
     
     const [result] = await dbPool.execute(
       "DELETE FROM detallepedidosclientes WHERE PedidoClienteId = ?",
       [pedidoId]
     );
     
-    console.log(`✅ [MODEL] ${result.affectedRows} detalles eliminados`);
     return result;
   } catch (error) {
     console.error("❌ [MODEL] Error en deleteDetallesByPedidoIdModel:", error);

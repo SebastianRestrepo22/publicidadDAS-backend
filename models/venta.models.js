@@ -143,10 +143,6 @@ export const createVentaFromPedidoModel = async (pedidoData, usuarioVendedorId, 
       clienteTelefono = pedidoData.ClienteTelefono || null;
       clienteCorreo = pedidoData.ClienteCorreo || null;
     }
-
-    // 🔥 USAR EL ESTADO PASADO COMO PARÁMETRO
-    console.log(`🔍 Venta creada - Pedido: ${pedidoData.PedidoClienteId}, Estado: ${estadoVenta}`);
-
     await useConnection.query(
       `INSERT INTO ventas (
         VentaId, Origen, PedidoClienteId, ClienteId, ClienteNombre, 
@@ -364,9 +360,6 @@ export const getVentasPaginated = async ({
 
   const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-  console.log('🔍 [MODEL] Query params:', params);
-  console.log('🔍 [MODEL] Where clause:', whereClause);
-
   const [rows] = await dbPool.query(`
     SELECT 
       v.VentaId,
@@ -395,8 +388,6 @@ export const getVentasPaginated = async ({
     ORDER BY v.FechaVenta DESC
     LIMIT ? OFFSET ?
   `, [...params, limit, offset]);
-
-  console.log(`✅ [MODEL] ${rows.length} ventas encontradas`);
 
   const [countResult] = await dbPool.query(`
     SELECT COUNT(DISTINCT v.VentaId) as total 

@@ -40,15 +40,12 @@ export const getDetalleByIdModel = async (id) => {
 
 export const getDetalleByCompraIdModel = async (CompraId) => {
   try {
-    console.log("🟡 [getDetalleByCompraIdModel] Ejecutando query para CompraId:", CompraId);
     
     const [rows] = await dbPool.execute(
       'SELECT * FROM detallecompras WHERE CompraId = ?',
       [CompraId]
     );
-    
-    console.log("🟢 [getDetalleByCompraIdModel] Filas obtenidas:", rows.length);
-    
+        
     // Procesar cada fila para parsear colores si es necesario
     return rows.map(row => {
       // Crear una copia del objeto
@@ -98,7 +95,6 @@ export const getDetalleByCompraIdModel = async (CompraId) => {
         } 
         // Si no es ni string ni array, establecer como array vacío
         else {
-          console.log("🟡 [getDetalleByCompraIdModel] colores no es string ni array, tipo:", typeof processedRow.colores);
           processedRow.colores = [];
         }
       } else {
@@ -140,10 +136,8 @@ export const createDetalleCompra = async ({
     
     coloresJSON = JSON.stringify(coloresLimpios);
     coloresParaDevolver = coloresLimpios; // Guardar para devolver
-    console.log("✅ Guardando colores en BD:", coloresJSON);
   } else {
     coloresJSON = JSON.stringify([]); // Siempre guardar un array vacío como JSON
-    console.log("📦 Sin colores, guardando array vacío");
   }
 
   await dbPool.execute(

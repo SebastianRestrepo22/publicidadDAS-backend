@@ -18,5 +18,4 @@ router.post("/", createDetalle);
 router.put("/:id", updateDetalle);
 router.delete("/:id", deleteDetalle);
 
-console.log("✅ Rutas de detalles de pedidos registradas");
 export default router;

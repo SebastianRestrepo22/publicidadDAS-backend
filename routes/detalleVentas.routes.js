@@ -12,5 +12,4 @@ router.use(authMiddleware);
 router.get("/", getDetallesByVenta);
 router.post("/", createDetalle);
 
-console.log("✅ Rutas de detalle de ventas registradas");
 export default router;

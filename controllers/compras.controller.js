@@ -33,18 +33,14 @@ export const createCompra = async (req, res) => {
       ProveedorId, 
       Total 
     } = req.body;
-    
-    console.log('📝 Creando compra con datos:', req.body);
-    
-    // 🔥 USAR SIEMPRE LA FECHA ACTUAL
+        
+    // USAR SIEMPRE LA FECHA ACTUAL
     const fechaActual = new Date();
     
     // 1. Generar UUID primero
     const [uuidResult] = await dbPool.query('SELECT UUID() as uuid');
     const compraId = uuidResult[0].uuid;
-    
-    console.log('🔑 UUID generado:', compraId);
-    
+        
     // 2. Insertar la compra con el UUID generado y ESTADO APROBADO
     await dbPool.query(
       `INSERT INTO compras 
@@ -54,13 +50,11 @@ export const createCompra = async (req, res) => {
         compraId,
         ProveedorId, 
         Total || 0, 
-        'aprobado', // 🔥 SIEMPRE APROBADO
+        'aprobado', // SIEMPRE APROBADO
         fechaActual
       ]
     );
-    
-    console.log('✅ Compra creada con ID:', compraId);
-    
+        
     // 3. Responder con los datos de la compra creada
     res.status(201).json({ 
       message: 'Compra creada exitosamente',
@@ -68,7 +62,7 @@ export const createCompra = async (req, res) => {
         CompraId: compraId,
         ProveedorId,
         Total: Total || 0,
-        Estado: 'aprobado', // 🔥 SIEMPRE APROBADO
+        Estado: 'aprobado', // SIEMPRE APROBADO
         FechaRegistro: fechaActual
       },
       CompraId: compraId

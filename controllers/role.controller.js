@@ -335,7 +335,6 @@ export const getRolePermissions = async (req, res) => {
   try {
     //2 Obtener id del params
     const { id } = req.params;
-    console.log("ID recibido:", id);
     //3 Consultar permisos del rol en BD
     const permisos = await getDataRolePermissions(id);
     //4 Respuesta 200 permisos
@@ -356,12 +355,6 @@ export const updateRolePermissions = async (req, res) => {
   const { id } = req.params;
   //3 Obtener permisos del body
   const { permisos } = req.body;
-
-  console.log('Actualizando permisos para rol:', {
-    roleId: id,
-    permisosCount: permisos?.length || 0,
-    permisos: permisos
-  });
   //4 ¿permisos es array?
   if (!Array.isArray(permisos)) {
     //5 Error 400 formato inválido
@@ -378,7 +371,6 @@ export const updateRolePermissions = async (req, res) => {
     }
 
     // 9 Eliminar permisos actuales
-    console.log('Eliminando permisos antiguos para rol:', id);
     await deletePermissos(id);
 
     // 10 ¿permisos.length === 0?
@@ -391,7 +383,6 @@ export const updateRolePermissions = async (req, res) => {
     }
 
     // 12 Verificar permisos existentes
-    console.log('Verificando que los permisos existen...');
     const placeholders = permisos.map(() => '?').join(',');
     //13 ¿hay permisos inexistentes?
     const existentes = await existenPermisos({ placeholders, permisos });
@@ -400,7 +391,6 @@ export const updateRolePermissions = async (req, res) => {
     const permisosInexistentes = permisos.filter(p => !permisosExistentes.includes(p));
 
     if (permisosInexistentes.length > 0) {
-      console.log('Permisos no encontrados:', permisosInexistentes);
       //14 Error 400 permisos inválidos
       return res.status(400).json({
         message: 'Algunos permisos no existen en la base de datos',
@@ -409,13 +399,11 @@ export const updateRolePermissions = async (req, res) => {
     }
 
     // 15 Insertar permisos (loop)
-    console.log(`Insertando ${permisos.length} permisos...`);
     for (let i = 0; i < permisos.length; i++) {
       const permisoId = permisos[i];
       try {
         await actualizarPermisos(id, permisoId);
 
-        console.log(`Permiso ${i + 1}/${permisos.length} insertado:`, permisoId);
       } catch (insertError) {
         // Si hay error de duplicado (no debería pasar porque borramos primero), continuar
         //16 ¿error duplicado?
@@ -428,7 +416,6 @@ export const updateRolePermissions = async (req, res) => {
       }
     }
 
-    console.log('Permisos actualizados exitosamente');
     //18 Respuesta 200 permisos actualizados
     res.status(200).json({
       message: 'Permisos actualizados correctamente',

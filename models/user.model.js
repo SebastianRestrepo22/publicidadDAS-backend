@@ -291,10 +291,6 @@ export const searchUsuariosModel = async (searchTerm = "", page = 1, limit = 10)
     // Asegurarnos de que limit y offset sean números y agregarlos a params
     params.push(limit, offset);
 
-    console.log('Query:', query);
-    console.log('Params:', params);
-    console.log('Params tipos:', params.map(p => typeof p));
-
     // Usar dbPool.query en lugar de execute
     const [rows] = await dbPool.query(query, params);
 

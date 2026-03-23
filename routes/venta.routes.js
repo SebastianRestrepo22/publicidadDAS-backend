@@ -41,5 +41,4 @@ router.put('/:id/rechazar', rechazarVenta);
 
 router.put('/:id/estado', actualizarEstadoVenta);
 
-console.log("Rutas de ventas registradas correctamente");
 export default router;

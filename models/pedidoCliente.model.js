@@ -97,10 +97,6 @@ export const createPedidoClienteModel = async ({
 }) => {
   const PedidoClienteId = uuidv4();
 
-  console.log('📝 [MODEL] Creando pedido con estado:', Estado);
-  console.log('📝 [MODEL] Método de pago:', MetodoPago);
-  console.log('📝 [MODEL] Origen:', Origen);
-
   await dbPool.execute(
     `
     INSERT INTO pedidosclientes 
@@ -167,9 +163,6 @@ export const createPedidoClienteModel = async ({
     `,
     [PedidoClienteId]
   );
-
-  console.log('✅ [MODEL] Pedido guardado con estado:', rows[0]?.Estado);
-  console.log('✅ [MODEL] Origen guardado:', rows[0]?.Origen);
 
   return rows[0];
 };
@@ -267,9 +260,6 @@ export const getPedidosClientesPaginated = async ({
 
     // Crear array de parámetros correctamente
     const queryParams = [...params, limit, offset];
-    
-    console.log('📝 [MODEL] Query:', query);
-    console.log('📝 [MODEL] Params:', queryParams);
 
     const [rows] = await dbPool.execute(query, queryParams);
 
