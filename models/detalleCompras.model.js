@@ -4,7 +4,7 @@ import { dbPool } from '../lib/db.js';
 const sanitize = (v) => (v === undefined ? null : v);
 
 export const getAllDetallesModel = async () => {
-  const [rows] = await dbPool.execute('SELECT * FROM DetalleCompras');
+  const [rows] = await dbPool.execute('SELECT * FROM detallecompras');
   
   // Parsear colores JSON para cada fila
   return rows.map(row => ({
@@ -15,12 +15,24 @@ export const getAllDetallesModel = async () => {
 
 export const getDetalleByIdModel = async (id) => {
   const [rows] = await dbPool.execute(
-    'SELECT * FROM DetalleCompras WHERE DetalleCompraId = ?',
+    'SELECT * FROM detallecompras WHERE DetalleCompraId = ?',
     [id]
   );
   
   if (rows[0]) {
-    rows[0].colores = rows[0].colores ? JSON.parse(rows[0].colores) : [];
+    // Si es string, intentar parsear
+    if (typeof rows[0].colores === 'string') {
+      try {
+        rows[0].colores = JSON.parse(rows[0].colores);
+      } catch (e) {
+        console.error(`❌ Error parseando colores para detalle ${id}:`, e.message);
+        rows[0].colores = [];
+      }
+    }
+    // Si no es array, convertir a array vacío
+    if (!Array.isArray(rows[0].colores)) {
+      rows[0].colores = [];
+    }
   }
   
   return rows[0];
@@ -31,7 +43,7 @@ export const getDetalleByCompraIdModel = async (CompraId) => {
     console.log("🟡 [getDetalleByCompraIdModel] Ejecutando query para CompraId:", CompraId);
     
     const [rows] = await dbPool.execute(
-      'SELECT * FROM DetalleCompras WHERE CompraId = ?',
+      'SELECT * FROM detallecompras WHERE CompraId = ?',
       [CompraId]
     );
     
@@ -110,29 +122,32 @@ export const createDetalleCompra = async ({
     Descripcion,
     PrecioUnitario,
     colores // Array de colores
- }) => {
+}) => {
   const DetalleCompraId = uuidv4();
 
-  // Si hay colores, asegurarse de que sea un array y convertirlo a JSON string
+  // Procesar colores para guardar en BD
   let coloresJSON = null;
+  let coloresParaDevolver = []; // Array vacío por defecto
+  
   if (colores && Array.isArray(colores) && colores.length > 0) {
-    // Asegurar que cada color sea un objeto plano sin métodos adicionales
-    const coloresLimpios = colores.map(color => {
-      // Crear un objeto nuevo y plano con solo las propiedades que necesitamos
-      return {
-        ColorId: String(color.ColorId || ''),
-        Stock: Number(color.Stock || 0),
-        Nombre: String(color.Nombre || 'Color'),
-        Hex: String(color.Hex || '#CCCCCC')
-      };
-    });
+    // Limpiar colores
+    const coloresLimpios = colores.map(color => ({
+      ColorId: String(color.ColorId || ''),
+      Stock: Number(color.Stock || 0),
+      Nombre: String(color.Nombre || 'Color'),
+      Hex: String(color.Hex || '#CCCCCC')
+    }));
     
     coloresJSON = JSON.stringify(coloresLimpios);
-    console.log("Guardando colores en BD:", coloresJSON);
+    coloresParaDevolver = coloresLimpios; // Guardar para devolver
+    console.log("✅ Guardando colores en BD:", coloresJSON);
+  } else {
+    coloresJSON = JSON.stringify([]); // Siempre guardar un array vacío como JSON
+    console.log("📦 Sin colores, guardando array vacío");
   }
 
   await dbPool.execute(
-    `INSERT INTO DetalleCompras 
+    `INSERT INTO detallecompras 
     (DetalleCompraId, CompraId, ProductoId, Cantidad, PrecioUnitario, Descripcion, colores) 
     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -142,10 +157,11 @@ export const createDetalleCompra = async ({
       sanitize(Cantidad),
       sanitize(PrecioUnitario || 0),
       sanitize(Descripcion),
-      coloresJSON // Guardar el JSON string
+      coloresJSON // ✅ Esto es un string JSON válido
     ]
   );
   
+  // ✅ Devolver el array limpio, no el original
   return { 
     DetalleCompraId, 
     CompraId, 
@@ -153,10 +169,9 @@ export const createDetalleCompra = async ({
     Cantidad, 
     PrecioUnitario, 
     Descripcion,
-    colores 
+    colores: coloresParaDevolver
   };
 };
-
 
 // ✅ Update con soporte para múltiples colores
 export const updateDetalleCompra = async (id, data) => {
@@ -165,7 +180,7 @@ export const updateDetalleCompra = async (id, data) => {
   const coloresJSON = colores && colores.length > 0 ? JSON.stringify(colores) : null;
 
   const [result] = await dbPool.execute(
-    `UPDATE DetalleCompras
+    `UPDATE detallecompras
      SET ProductoId = ?, Cantidad = ?, PrecioUnitario = ?, Descripcion = ?, colores = ?
      WHERE DetalleCompraId = ?`,
     [
@@ -183,7 +198,7 @@ export const updateDetalleCompra = async (id, data) => {
 
 export const deleteDetalleCompra = async (id) => {
   const [result] = await dbPool.execute(
-    'DELETE FROM DetalleCompras WHERE DetalleCompraId = ?', 
+    'DELETE FROM detallecompras WHERE DetalleCompraId = ?', 
     [id]
   );
   return result;
@@ -234,7 +249,7 @@ export const actualizarStockPorColor = async (productoId, colorId, cantidad) => 
 // ✅ Función para actualizar stock general
 export const actualizarStockGeneral = async (productoId, cantidad) => {
   const [producto] = await dbPool.execute(
-    'SELECT Stock, UsaColores FROM Productos WHERE ProductoId = ?',
+    'SELECT Stock, UsaColores FROM productos WHERE ProductoId = ?',
     [productoId]
   );
 
@@ -246,7 +261,7 @@ export const actualizarStockGeneral = async (productoId, cantidad) => {
   const nuevoStock = stockActual + cantidad;
 
   await dbPool.execute(
-    'UPDATE Productos SET Stock = ? WHERE ProductoId = ?',
+    'UPDATE productos SET Stock = ? WHERE ProductoId = ?',
     [nuevoStock, productoId]
   );
 
@@ -262,7 +277,7 @@ export const actualizarStockGeneral = async (productoId, cantidad) => {
 // ✅ Función para actualizar stock según corresponda
 export const actualizarStockProducto = async (productoId, colorId, cantidad) => {
   const [producto] = await dbPool.execute(
-    'SELECT UsaColores FROM Productos WHERE ProductoId = ?',
+    'SELECT UsaColores FROM productos WHERE ProductoId = ?',
     [productoId]
   );
 
@@ -328,8 +343,8 @@ export const getDetallesConProducto = async (CompraId) => {
             p.SKU, 
             p.Stock as StockActual,
             p.UsaColores
-     FROM DetalleCompras dc
-     LEFT JOIN Productos p ON dc.ProductoId = p.ProductoId
+     FROM detallecompras dc
+     LEFT JOIN productos p ON dc.ProductoId = p.ProductoId
      WHERE dc.CompraId = ?`,
     [CompraId]
   );

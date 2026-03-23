@@ -1,3 +1,4 @@
+// routes/productos.routes.js
 import express from 'express';
 import {
     postProducto,
@@ -9,8 +10,6 @@ import {
     buscarProducto,
     cambiarEstadoProducto
 } from '../controllers/productos.controller.js';
-// IMPORTANTE: Importa desde color.controller.js, NO desde productos.controller
-import { getColoresProducto, updateColoresProducto } from '../controllers/color.controller.js';
 
 const router = express.Router();
 
@@ -20,10 +19,8 @@ router.get('/buscar', buscarProducto);
 
 // Rutas con parámetros específicos
 router.put('/:id/estado', cambiarEstadoProducto);
-router.get('/:id/colores', getColoresProducto);  
-router.post('/:id/colores', updateColoresProducto); 
 
-// Rutas CRUD básicas (más genéricas, al final)
+// Rutas CRUD básicas
 router.post('/', postProducto);
 router.get('/', getAllProducto);
 router.get('/:id', getProductoById);

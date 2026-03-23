@@ -1,111 +1,155 @@
-// controllers/servicios.controller.js
 import { v4 as uuidv4 } from 'uuid';
-import { buscarServicioDB, createService, deleteDataService, findDuplicateName, getDataAllServcios, getDataServiceById, nombreServiceExiste, updateDataServicio } from '../models/services.model.js';
+import {
+    buscarServicioDB,
+    createService,
+    deleteDataService,
+    findDuplicateName,
+    getServiciosPaginated,
+    getDataServiceById,
+    nombreServiceExiste,
+    verificarAsociacionesServicio,
+    updateDataServicio
+} from '../models/services.model.js';
 import { dbPool } from '../lib/db.js';
 
-// Crear producto
+// Crear servicio
 export const postService = async (req, res) => {
     const {
         Nombre,
         Descripcion,
         Imagen,
-        TipoPrecio,
-        Precio,
-        Descuento = 0,
         CategoriaId,
     } = req.body;
 
     try {
-        if (!Nombre || !Imagen || !CategoriaId || !TipoPrecio) {
+        // Validar campos obligatorios
+        if (!Nombre || !Imagen || !CategoriaId) {
             return res.status(400).json({
-                message: 'Campos obligatorios faltantes'
+                message: 'Campos obligatorios faltantes: Nombre, Imagen, CategoriaId'
             });
         }
 
-        if (!['UNICO', 'POR_TAMANO'].includes(TipoPrecio)) {
-            return res.status(400).json({
-                message: 'TipoPrecio inválido'
-            });
-        }
-
-        // Validaciones según tipo
-        if (TipoPrecio === 'UNICO' && !Precio) {
-            return res.status(400).json({
-                message: 'El precio es obligatorio cuando el servicio es de precio único'
-            });
-        }
-
-        if (TipoPrecio === 'POR_TAMANO' && Precio) {
-            return res.status(400).json({
-                message: 'No debe enviarse Precio cuando el servicio es por tamaño'
-            });
-        }
-
+        // Verificar si el nombre ya existe
         const existente = await nombreServiceExiste(Nombre);
-
         if (existente.length > 0) {
             return res.status(409).json({ message: 'Servicio ya existe' });
         }
 
         const ServicioId = uuidv4();
 
+        // Crear servicio sin precios (se cotizan por WhatsApp)
         await createService({
             ServicioId,
             Nombre,
             Descripcion,
             Imagen,
-            TipoPrecio,
-            Precio: TipoPrecio === 'UNICO' ? Precio : null,
-            Descuento,
             CategoriaId
         });
 
-        res.status(201).json({ message: 'Servicio creado exitosamente', ServicioId });
+        res.status(201).json({ 
+            message: 'Servicio creado exitosamente', 
+            ServicioId 
+        });
 
     } catch (error) {
-        console.error(error);
+        console.error('Error en postService:', error);
         res.status(500).json({ message: 'Error interno del servidor' });
     }
 };
 
-// Obtener todos los productos
+// Obtener todos los servicios con paginación y filtros
 export const getAllService = async (req, res) => {
     try {
-        const rows = await getDataAllServcios();
-        res.status(200).json(rows);
+        const { estado, page = 1, limit = 10, filtroCampo, filtroValor } = req.query;
+
+        const currentPage = Math.max(1, parseInt(page) || 1);
+        const itemsPerPage = Math.max(1, parseInt(limit) || 10);
+
+        const result = await getServiciosPaginated({
+            page: currentPage,
+            limit: itemsPerPage,
+            filtroCampo: filtroCampo || null,
+            filtroValor: filtroValor || null,
+            estado: estado || null
+        });
+
+        const data = result?.data && Array.isArray(result.data) ? result.data : [];
+        const totalItems = result?.totalItems || 0;
+        const totalPages = result?.totalPages || Math.ceil(totalItems / itemsPerPage) || 1;
+
+        // Si no hay datos y la página > 1, regresar a página 1
+        if (data.length === 0 && currentPage > 1 && totalItems > 0) {
+            const fallback = await getServiciosPaginated({
+                page: 1,
+                limit: itemsPerPage,
+                filtroCampo: filtroCampo || null,
+                filtroValor: filtroValor || null,
+                estado: estado || null
+            });
+            
+            const fallbackData = fallback?.data && Array.isArray(fallback.data) ? fallback.data : [];
+            const fallbackTotal = fallback?.totalItems || 0;
+            const fallbackPages = fallback?.totalPages || Math.ceil(fallbackTotal / itemsPerPage) || 1;
+            
+            return res.status(200).json({
+                data: fallbackData,
+                pagination: {
+                    totalItems: fallbackTotal,
+                    totalPages: fallbackPages,
+                    currentPage: 1,
+                    itemsPerPage: itemsPerPage
+                }
+            });
+        }
+
+        res.status(200).json({
+            data: data,
+            pagination: {
+                totalItems: totalItems,
+                totalPages: totalPages,
+                currentPage: currentPage,
+                itemsPerPage: itemsPerPage
+            }
+        });
+
     } catch (error) {
-        console.error('Error al obtener los servicios:', error);
-        res.status(500).json({ message: 'Error interno del servidor' });
+        console.error('Error en getAllService:', error);
+        res.status(200).json({
+            data: [],
+            pagination: {
+                totalItems: 0,
+                totalPages: 1,
+                currentPage: 1,
+                itemsPerPage: parseInt(req.query.limit) || 10
+            }
+        });
     }
 };
 
-// Obtener producto por ID
+// Obtener servicio por ID
 export const getServiceById = async (req, res) => {
     const { id } = req.params;
     try {
-        const productos = await getDataServiceById(id);
+        const servicios = await getDataServiceById(id);
 
-        if (productos.length === 0) {
-            return res.status(404).json({ message: 'Serivicio no encontrado' });
+        if (servicios.length === 0) {
+            return res.status(404).json({ message: 'Servicio no encontrado' });
         }
 
-        res.status(200).json(productos[0]);
+        res.status(200).json(servicios[0]);
     } catch (error) {
         console.error('Error al obtener el servicio:', error);
         res.status(500).json({ message: 'Error interno del servidor' });
     }
 };
 
-// Actualizar producto - VERSIÓN CORREGIDA
+// Actualizar servicio
 export const updateService = async (req, res) => {
     const { ServicioId } = req.params;
     const {
         Nombre,
         Descripcion,
         Imagen,
-        TipoPrecio,  // ¡IMPORTANTE! Recibir del body
-        Precio,
-        Descuento,
         CategoriaId,
         Estado
     } = req.body;
@@ -123,43 +167,35 @@ export const updateService = async (req, res) => {
             return res.status(409).json({
                 message: 'El nombre ya existe.'
             });
-        };
+        }
 
-        // Buscar servicio actual
+        // Verificar que el servicio existe
         const servicioActual = await getDataServiceById(ServicioId);
-
         if (servicioActual.length === 0) {
             return res.status(404).json({
                 message: 'Servicio no encontrado'
             });
         }
 
-        // Validar que no se cambie el tipo de precio
-        if (servicioActual[0].TipoPrecio !== TipoPrecio) {
-            return res.status(400).json({
-                message: 'No se puede cambiar el tipo de precio de un servicio existente'
-            });
-        }
-
+        // Actualizar servicio (sin campos de precio)
         const result = await updateDataServicio({
             ServicioId,
             Nombre,
             Descripcion,
             Imagen,
-            TipoPrecio,
-            Precio: TipoPrecio === 'UNICO' ? Precio : null,
-            Descuento,
             CategoriaId,
             Estado
         });
 
         if (result === 0) {
-            return res.status(409).json({ message: 'Servicio no encontrado o sin cambios' });
+            return res.status(409).json({ 
+                message: 'Servicio no encontrado o sin cambios' 
+            });
         }
 
         res.status(200).json({
             message: 'Servicio actualizado correctamente',
-            producto: { ServicioId, Nombre, Estado }
+            servicio: { ServicioId, Nombre, Estado }
         });
     } catch (error) {
         console.error('Error al actualizar el servicio:', error);
@@ -171,8 +207,23 @@ export const updateService = async (req, res) => {
 export const deleteService = async (req, res) => {
     const { id } = req.params;
     try {
+        // 1. Verificar si tiene asociaciones antes de intentar eliminar
+        const asociaciones = await verificarAsociacionesServicio(id);
+        
+        if (asociaciones.tieneAsociaciones) {
+            return res.status(409).json({ 
+                message: 'No se puede eliminar: este servicio está asociado a pedidos o ventas.',
+                detalles: {
+                    pedidos: asociaciones.detallePedidos,
+                    ventas: asociaciones.detalleVentas
+                }
+            });
+        }
+        
+        // 2. Si no tiene asociaciones, proceder con la eliminación
         await deleteDataService(id);
         res.status(200).json({ message: 'Servicio eliminado correctamente' });
+        
     } catch (error) {
         console.error('Error al eliminar el servicio:', error);
         res.status(500).json({ message: 'Error interno del servidor' });
@@ -191,59 +242,64 @@ export const validarNombre = async (req, res) => {
     }
 };
 
+// Buscar servicios con filtros
 export const buscarService = async (req, res) => {
-    const { campo, valor } = req.query;
+    const { campo, valor, page = 1, limit = 10, estado } = req.query;
 
     const columnasPermitidas = {
         nombre: 'Nombre',
         descripcion: 'Descripcion',
-        precio: 'Precio',
-        descuento: 'Descuento',
         categoria: 'CategoriaId',
         estado: 'Estado'
     };
 
-    const columna = columnasPermitidas[campo?.toLowerCase()];
-    if (!columna) {
+    const filtroCampo = columnasPermitidas[campo?.toLowerCase()];
+    
+    if (campo && !filtroCampo) {
         return res.status(400).json({ message: 'Campo de búsqueda inválido' });
     }
 
-    if (valor === undefined || valor === '') {
-        return res.status(400).json({ message: 'Valor de búsqueda requerido' });
-    }
-
     try {
-        const camposExactos = ['Precio', 'Descuento', 'CategoriaId', 'Estado'];
-        const operador = camposExactos.includes(columna) ? '=' : 'LIKE';
+        const currentPage = Math.max(1, parseInt(page) || 1);
+        const itemsPerPage = Math.max(1, parseInt(limit) || 10);
 
-        let valorFinal = valor;
+        const result = await getServiciosPaginated({
+            page: currentPage,
+            limit: itemsPerPage,
+            filtroCampo: filtroCampo || null,
+            filtroValor: valor || null,
+            estado: estado || null
+        });
 
-        if (['Precio', 'Descuento'].includes(columna)) {
-            valorFinal = Number(valor);
-            if (Number.isNaN(valorFinal)) {
-                return res.status(400).json({ message: `${columna} debe ser numérico` });
+        const data = result?.data && Array.isArray(result.data) ? result.data : [];
+        const totalItems = result?.totalItems || 0;
+        const totalPages = result?.totalPages || Math.ceil(totalItems / itemsPerPage) || 1;
+
+        res.status(200).json({
+            data: data,
+            pagination: {
+                totalItems: totalItems,
+                totalPages: totalPages,
+                currentPage: currentPage,
+                itemsPerPage: itemsPerPage
             }
-        }
+        });
 
-        if (columna === 'Estado') {
-            const estadosValidos = ['Activo', 'Inactivo'];
-            if (!estadosValidos.includes(valor)) {
-                return res.status(400).json({ message: 'Estado inválido' });
-            }
-        }
-
-        const parametro = operador === '=' ? valorFinal : `%${valor}%`;
-
-        const servicios = await buscarServicioDB({ columna, operador, parametro });
-
-        res.status(200).json({ results: servicios });
     } catch (error) {
-        console.error('Error al buscar servicios:', error);
-        res.status(500).json({ message: 'Error interno del servidor' });
+        console.error('Error en buscarService:', error);
+        res.status(200).json({
+            data: [],
+            pagination: {
+                totalItems: 0,
+                totalPages: 1,
+                currentPage: 1,
+                itemsPerPage: parseInt(limit) || 10
+            }
+        });
     }
 };
 
-// Cambiar estado del servicio (toggle)
+// Cambiar estado del servicio
 export const cambiarEstadoService = async (req, res) => {
     const { id } = req.params;
     const { Estado } = req.body;
@@ -259,7 +315,7 @@ export const cambiarEstadoService = async (req, res) => {
         }
 
         await dbPool.query(
-            'UPDATE Servicios SET Estado = ? WHERE ServicioId = ?',
+            'UPDATE servicios SET Estado = ? WHERE ServicioId = ?',
             [Estado, id]
         );
 

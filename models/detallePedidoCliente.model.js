@@ -1,81 +1,74 @@
 import { v4 as uuidv4 } from "uuid";
 import { dbPool } from "../lib/db.js";
 
-// ========================================
-// OBTENER DETALLES POR ID DE PEDIDO
-// ========================================
 export const getDetallePedidoByPedidoIdModel = async (PedidoClienteId) => {
   try {
-    console.log(`🔍 [MODEL] Buscando detalles con colores para pedido: ${PedidoClienteId}`);
-    
-    const [rows] = await dbPool.execute(
-      `SELECT 
+    if (!PedidoClienteId) {
+      return [];
+    }
+
+    const query = `
+      SELECT 
         d.DetallePedidoClienteId,
         d.PedidoClienteId,
         d.ProductoId,
         d.ServicioId,
         d.Cantidad,
-        d.Tamaño,
         d.Descripcion,
         d.UrlImagen,
-        d.UrlImagenPersonalizada,
         d.Precio,
         d.ColorId,
-        c.Nombre AS ColorNombre
-       FROM detallePedidosClientes d
-       LEFT JOIN colores c ON d.ColorId = c.ColorId
-       WHERE d.PedidoClienteId = ?`,
-      [PedidoClienteId]
-    );
+        c.Nombre AS ColorNombre,
+        p.Nombre AS ProductoNombre,
+        s.Nombre AS ServicioNombre,
+        (d.Cantidad * d.Precio) AS Subtotal
+      FROM detallepedidosclientes d
+      LEFT JOIN colores c ON d.ColorId = c.ColorId
+      LEFT JOIN productos p ON d.ProductoId = p.ProductoId
+      LEFT JOIN servicios s ON d.ServicioId = s.ServicioId
+      WHERE d.PedidoClienteId = ?
+    `;
+
+    const [rows] = await dbPool.execute(query, [PedidoClienteId]);
+    return rows;
     
-    // Calcula Subtotal en JS (no en DB)
-    const detallesConSubtotal = rows.map(row => ({
-      ...row,
-      Subtotal: (row.Cantidad || 0) * (row.Precio || 0)
-    }));
-    
-    console.log(`✅ [MODEL] Detalles con colores cargados: ${detallesConSubtotal.length}`);
-    return detallesConSubtotal;
   } catch (error) {
-    console.error("❌ [MODEL] Error en getDetallePedidoByPedidoIdModel:", error);
-    throw error;
+    console.error('❌ Error en getDetallePedidoByPedidoIdModel:', error);
+    return [];
   }
 };
 
 // ========================================
-// CREAR DETALLE DE PEDIDO
+// CREAR DETALLE DE PEDIDO (VERSIÓN SIMPLIFICADA)
 // ========================================
 export const createDetallePedidoModel = async ({
   PedidoClienteId,
   ProductoId,
   ServicioId,
   Cantidad,
-  Tamaño,
   Descripcion,
   UrlImagen,
-  UrlImagenPersonalizada,
   Precio,
   ColorId
 }) => {
   try {
     const DetallePedidoClienteId = uuidv4();
     
+    // 🔴 IMPORTANTE: Tamaño y UrlImagenPersonalizada eliminados
     const query = `
-      INSERT INTO detallePedidosClientes 
+      INSERT INTO detallepedidosclientes 
       (
         DetallePedidoClienteId, 
         PedidoClienteId, 
         ProductoId, 
         ServicioId, 
         Cantidad, 
-        Tamaño, 
         Descripcion, 
         UrlImagen, 
-        UrlImagenPersonalizada,
         Precio, 
         ColorId
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const values = [
@@ -84,10 +77,8 @@ export const createDetallePedidoModel = async ({
       ProductoId || null,
       ServicioId || null,
       Cantidad,
-      Tamaño,
-      Descripcion,
-      UrlImagen,
-      UrlImagenPersonalizada,
+      Descripcion || null,
+      UrlImagen || null,
       Precio,
       ColorId || null
     ];
@@ -95,15 +86,41 @@ export const createDetallePedidoModel = async ({
     console.log("📝 [MODEL] Insertando detalle:", {
       DetallePedidoClienteId,
       ProductoId,
+      ServicioId,
       ColorId,
-      UrlImagenPersonalizada: UrlImagenPersonalizada ? "✓ tiene imagen" : "sin imagen",
-      valores: values
+      Cantidad,
+      Precio
     });
     
     const [result] = await dbPool.execute(query, values);
     
     console.log("✅ [MODEL] Detalle creado con ID:", DetallePedidoClienteId);
-    return { DetallePedidoClienteId: DetallePedidoClienteId };
+    
+    // Obtener el detalle recién creado con nombres
+    const [nuevoDetalle] = await dbPool.execute(
+      `SELECT 
+        d.DetallePedidoClienteId,
+        d.PedidoClienteId,
+        d.ProductoId,
+        d.ServicioId,
+        d.Cantidad,
+        d.Descripcion,
+        d.UrlImagen,
+        d.Precio,
+        d.ColorId,
+        c.Nombre AS ColorNombre,
+        p.Nombre AS ProductoNombre,
+        s.Nombre AS ServicioNombre,
+        (d.Cantidad * d.Precio) AS Subtotal
+       FROM detallepedidosclientes d
+       LEFT JOIN colores c ON d.ColorId = c.ColorId
+       LEFT JOIN productos p ON d.ProductoId = p.ProductoId
+       LEFT JOIN servicios s ON d.ServicioId = s.ServicioId
+       WHERE d.DetallePedidoClienteId = ?`,
+      [DetallePedidoClienteId]
+    );
+    
+    return nuevoDetalle[0];
     
   } catch (error) {
     console.error("❌ Error en createDetallePedidoModel:", error);
@@ -117,7 +134,7 @@ export const createDetallePedidoModel = async ({
 export const deleteDetallePedidoModel = async (id) => {
   try {
     const [result] = await dbPool.execute(
-      "DELETE FROM detallePedidosClientes WHERE DetallePedidoClienteId = ?",
+      "DELETE FROM detallepedidosclientes WHERE DetallePedidoClienteId = ?",
       [id]
     );
     return result;
@@ -128,21 +145,66 @@ export const deleteDetallePedidoModel = async (id) => {
 };
 
 // ========================================
-// ✅ NUEVA FUNCIÓN: ELIMINAR TODOS LOS DETALLES DE UN PEDIDO
+// ELIMINAR TODOS LOS DETALLES DE UN PEDIDO
 // ========================================
 export const deleteDetallesByPedidoIdModel = async (pedidoId) => {
   try {
     console.log(`🗑️ [MODEL] Eliminando todos los detalles del pedido: ${pedidoId}`);
     
     const [result] = await dbPool.execute(
-      "DELETE FROM detallePedidosClientes WHERE PedidoClienteId = ?",
+      "DELETE FROM detallepedidosclientes WHERE PedidoClienteId = ?",
       [pedidoId]
     );
     
-    console.log(`✅ [MODEL] ${result.affectedRows} detalles eliminados del pedido ${pedidoId}`);
+    console.log(`✅ [MODEL] ${result.affectedRows} detalles eliminados`);
     return result;
   } catch (error) {
     console.error("❌ [MODEL] Error en deleteDetallesByPedidoIdModel:", error);
+    throw error;
+  }
+};
+
+// ========================================
+// ACTUALIZAR DETALLE DE PEDIDO
+// ========================================
+export const updateDetallePedidoModel = async (id, data) => {
+  try {
+    const allowedFields = [
+      'ProductoId',
+      'ServicioId',
+      'Cantidad',
+      'Descripcion',
+      'UrlImagen',
+      'Precio',
+      'ColorId'
+    ];
+
+    const fields = [];
+    const values = [];
+
+    for (const field of allowedFields) {
+      if (data[field] !== undefined) {
+        fields.push(`${field} = ?`);
+        values.push(data[field]);
+      }
+    }
+
+    if (fields.length === 0) {
+      return { affectedRows: 0 };
+    }
+
+    const query = `
+      UPDATE detallepedidosclientes
+      SET ${fields.join(', ')}
+      WHERE DetallePedidoClienteId = ?
+    `;
+
+    values.push(id);
+
+    const [result] = await dbPool.execute(query, values);
+    return result;
+  } catch (error) {
+    console.error("❌ Error en updateDetallePedidoModel:", error);
     throw error;
   }
 };

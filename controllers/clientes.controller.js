@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import dayjs from "dayjs"; // para manejar expiraciones
 import crypto from "crypto";
-import { correoExiste, createByAdmin, deleteDataUser, getAllDataClientes, getClientById, getUserSystem, obtenerUsuarioActualizado, pedidosUsuarios, telefonoDataExistente, traerDatosActuales, updateDataUser, validarDataCedula } from '../models/user.model.js';
+import { correoExiste, createByAdmin, deleteDataUser, getAllDataClientes, getClientById, getUserSystem, obtenerUsuarioActualizado, pedidosUsuarios, telefonoDataExistente, traerDatosActuales, updateDataUser, validarDataCedula, getClientesPaginated } from '../models/user.model.js';
 import { sendResetPasswordEmail } from '../utils/email.js';
 import { getRoleIdByName } from '../models/role.model.js';
 
@@ -71,21 +71,68 @@ export const createClient = async (req, res) => {
 
 // Listar todos los clientes
 export const getAllClients = async (req, res) => {
-    try {
-        const roleRows = await getRoleIdByName('cliente');
+  try {
+    const { page = 1, limit = 10, filtroCampo, filtroValor } = req.query;
 
-        if (roleRows.length === 0) {
-            return res.status(400).json({ message: "Rol cliente no existe" });
+    const result = await getClientesPaginated({
+      page: Math.max(1, parseInt(page) || 1),
+      limit: Math.max(1, parseInt(limit) || 10),
+      filtroCampo: filtroCampo || null,
+      filtroValor: filtroValor || null
+    });
+
+    // Validación defensiva
+    const data = result && result.data && Array.isArray(result.data) ? result.data : [];
+    const totalItems = typeof result?.totalItems === 'number' ? result.totalItems : 0;
+    const currentPage = typeof result?.currentPage === 'number' ? result.currentPage : 1;
+    const itemsPerPage = Math.max(1, parseInt(limit) || 10);
+
+    // Si no hay datos y la página > 1, volver a página 1
+    if (data.length === 0 && currentPage > 1 && totalItems > 0) {
+      const fallback = await getClientesPaginated({
+        page: 1,
+        limit: itemsPerPage,
+        filtroCampo: filtroCampo || null,
+        filtroValor: filtroValor || null
+      });
+      const fallbackData = fallback && fallback.data && Array.isArray(fallback.data) ? fallback.data : [];
+      const fallbackTotal = typeof fallback?.totalItems === 'number' ? fallback.totalItems : 0;
+      
+      return res.status(200).json({
+        data: fallbackData,
+        pagination: {
+          totalItems: fallbackTotal,
+          totalPages: Math.ceil(fallbackTotal / itemsPerPage),
+          currentPage: 1,
+          itemsPerPage: itemsPerPage
         }
-
-        const roleId = roleRows[0].id;
-
-        const clientes = await getAllDataClientes(roleId);
-        res.status(200).json(clientes);
-    } catch (error) {
-        console.error('Error al obtener usuarios:', error);
-        res.status(500).json({ message: 'Error al obtener usuarios' });
+      });
     }
+
+    // Respuesta con estructura CORRECTA
+    res.status(200).json({
+      data: data,
+      pagination: {
+        totalItems: totalItems,
+        totalPages: Math.ceil(totalItems / itemsPerPage),
+        currentPage: currentPage,
+        itemsPerPage: itemsPerPage
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en getAllClients:', error);
+    // Fallback con estructura CORRECTA
+    res.status(200).json({
+      data: [],
+      pagination: {
+        totalItems: 0,
+        totalPages: 1,
+        currentPage: 1,
+        itemsPerPage: parseInt(req.query.limit) || 10
+      }
+    });
+  }
 };
 
 // Obtener cliente por ID 
@@ -309,4 +356,59 @@ export const searchClientesForPedidos = async (req, res) => {
   }
 };
 
+export const buscarClientes = async (req, res) => {
+  const { campo, valor, page = 1, limit = 10 } = req.query;
 
+  const columnasPermitidas = {
+    cedula: 'cedula',
+    nombre: 'nombre',
+    correo: 'correo',
+    telefono: 'telefono',
+    direccion: 'direccion',
+    tipoDocumento: 'tipoDocumento'
+  };
+
+  const filtroCampo = columnasPermitidas[campo?.toLowerCase()];
+  
+  if (campo && !filtroCampo) {
+    return res.status(400).json({ message: 'Campo de búsqueda inválido' });
+  }
+
+  try {
+    const result = await getClientesPaginated({
+      page: Math.max(1, parseInt(page) || 1),
+      limit: Math.max(1, parseInt(limit) || 10),
+      filtroCampo: filtroCampo || null,
+      filtroValor: valor || null
+    });
+
+    const data = result && result.data && Array.isArray(result.data) ? result.data : [];
+    const totalItems = typeof result?.totalItems === 'number' ? result.totalItems : 0;
+    const currentPage = typeof result?.currentPage === 'number' ? result.currentPage : 1;
+    const itemsPerPage = Math.max(1, parseInt(limit) || 10);
+
+    // Respuesta con estructura CORRECTA
+    res.status(200).json({
+      data: data,
+      pagination: {
+        totalItems: totalItems,
+        totalPages: Math.ceil(totalItems / itemsPerPage),
+        currentPage: currentPage,
+        itemsPerPage: itemsPerPage
+      }
+    });
+
+  } catch (error) {
+    console.error('Error en buscarClientes:', error);
+    // Fallback con estructura CORRECTA
+    res.status(200).json({
+      data: [],
+      pagination: {
+        totalItems: 0,
+        totalPages: 1,
+        currentPage: 1,
+        itemsPerPage: parseInt(limit) || 10
+      }
+    });
+  }
+};

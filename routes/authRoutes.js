@@ -1,6 +1,8 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from "crypto";
+import nodemailer from "nodemailer";
 import { dbPool } from '../lib/db.js';
 const router = express.Router();
 
@@ -108,7 +110,7 @@ router.post('/login', async (req, res) => {
 
         // 🔥 NUEVO: Verificar si el usuario tiene contraseña (si es NULL, significa que no ha sido establecida)
         if (!user.Contrasena) {
-            return res.status(403).json({ 
+            return res.status(403).json({
                 message: 'Debes establecer tu contraseña primero. Revisa tu correo electrónico para el enlace de activación.',
                 codigo: 'PASSWORD_NOT_SET'
             });
@@ -244,43 +246,46 @@ router.get('/validar-telefono', async (req, res) => {
     }
 });
 
-import crypto from "crypto";
-import nodemailer from "nodemailer";
-
 // Solicitar recuperación de contraseña
 router.post('/forgot-password', async (req, res) => {
-    const { correo } = req.body;
+const { correo } = req.body;
+    console.log('📥 /forgot-password recibido:', correo);
 
     try {
-
         const [usuarios] = await dbPool.execute(
-            'SELECT * FROM usuarios WHERE CorreoElectronico = ?',
+            'SELECT CedulaId, CorreoElectronico FROM usuarios WHERE CorreoElectronico = ?',
             [correo]
         );
-
+        
         if (usuarios.length === 0) {
             return res.status(404).json({ message: 'Correo no registrado' });
         }
 
-        const user = usuarios[0];
-
-        // Crear token seguro
         const resetToken = crypto.randomBytes(32).toString('hex');
-        const expire = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+        console.log('🔑 Token generado:', resetToken.slice(0, 10) + '...');
 
-        // Guardar token en BD
-        await dbPool.execute(
-            'UPDATE usuarios SET resetToken = ?, resetTokenExpire = ? WHERE CedulaId = ?',
-            [resetToken, expire, user.CedulaId]
+        // ✅ CLAVE: Usar DATE_ADD(UTC_TIMESTAMP()) en lugar de calcular en JS
+        const [updateResult] = await dbPool.execute(
+            `UPDATE usuarios 
+             SET ResetToken = ?, ResetTokenExpire = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 24 HOUR)
+             WHERE CorreoElectronico = ?`,
+            [resetToken, correo]
         );
+        
+        console.log('📊 UPDATE:', { affectedRows: updateResult.affectedRows });
 
-        // Enviar correo con enlace de recuperación
+        if (updateResult.affectedRows === 0) {
+            return res.status(500).json({ message: 'No se pudo guardar el token' });
+        }
+
+        // Enviar email
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
         });
 
-        const resetUrl = `http://localhost:5173/reset-password/${resetToken}`;
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
 
         await transporter.sendMail({
             from: `"Soporte Sistema" <${process.env.EMAIL_USER}>`,
@@ -489,32 +494,60 @@ router.post('/reset-password/:token', async (req, res) => {
     const { nuevaContrasena } = req.body;
 
     try {
-
+        // ✅ Buscar usuario con token válido (usando UTC_TIMESTAMP para consistencia)
         const [usuarios] = await dbPool.execute(
-            'SELECT * FROM usuarios WHERE resetToken = ? AND resetTokenExpire > NOW()',
+            `SELECT * FROM usuarios 
+             WHERE ResetToken = ? 
+             AND ResetTokenExpire > UTC_TIMESTAMP()`,  // ← UTC_TIMESTAMP en lugar de NOW()
             [token]
         );
 
         if (usuarios.length === 0) {
-            return res.status(400).json({ message: 'Token inválido o expirado' });
+            // Verificar si el token existe pero expiró
+            const [expirado] = await dbPool.execute(
+                'SELECT ResetTokenExpire FROM usuarios WHERE ResetToken = ?',
+                [token]
+            );
+            
+            if (expirado.length > 0) {
+                // Limpiar token expirado para seguridad
+                await dbPool.execute(
+                    'UPDATE usuarios SET ResetToken = NULL, ResetTokenExpire = NULL WHERE ResetToken = ?',
+                    [token]
+                );
+                
+                return res.status(400).json({ 
+                    message: 'El enlace ha expirado. Por favor, solicita uno nuevo.',
+                    codigo: 'TOKEN_EXPIRED'
+                });
+            }
+            
+            return res.status(400).json({ message: 'Token inválido o no encontrado', codigo: 'TOKEN_INVALID' });
         }
 
         const user = usuarios[0];
 
+        // Validar contraseña
+        if (!nuevaContrasena || nuevaContrasena.length < 8) {
+            return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
+        }
+
+        // Hashear nueva contraseña
         const hash = await bcrypt.hash(nuevaContrasena, 10);
 
-        // Actualizar contraseña y eliminar token
+        // ✅ Actualizar contraseña y limpiar token (con nombres correctos)
         await dbPool.execute(
-            'UPDATE usuarios SET Contrasena = ?, resetToken = NULL, resetTokenExpire = NULL WHERE CedulaId = ?',
+            'UPDATE usuarios SET Contrasena = ?, ResetToken = NULL, ResetTokenExpire = NULL WHERE CedulaId = ?',
             [hash, user.CedulaId]
         );
 
+        console.log('✅ Contraseña actualizada para usuario:', user.CedulaId);
         res.status(200).json({ message: 'Contraseña actualizada exitosamente' });
+
     } catch (error) {
-        console.error('Error en reset-password:', error);
+        console.error('❌ Error en reset-password:', error);
         res.status(500).json({ message: 'Error interno del servidor' });
     }
 });
-
 
 export default router;

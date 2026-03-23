@@ -1,9 +1,14 @@
 import {
   getDetallePedidoByPedidoIdModel,
-  createDetallePedidoModel,  // ← Ya existe en tu model
-  deleteDetallePedidoModel
+  createDetallePedidoModel,
+  deleteDetallePedidoModel,
+  updateDetallePedidoModel,
+  deleteDetallesByPedidoIdModel
 } from "../models/detallePedidoCliente.model.js";
 
+// ========================================
+// OBTENER DETALLES POR ID DE PEDIDO
+// ========================================
 export const getDetallesByPedido = async (req, res) => {
   try {
     const pedidoId = req.params.id;
@@ -15,17 +20,19 @@ export const getDetallesByPedido = async (req, res) => {
       cantidad: detalles.length,
       detalles: detalles.map(d => ({
         id: d.DetallePedidoClienteId,
-        producto: d.ProductoId,
-        color: d.ColorId,
-        cantidad: d.Cantidad
+        producto: d.ProductoNombre || d.ProductoId,
+        servicio: d.ServicioNombre || d.ServicioId,
+        color: d.ColorNombre,
+        cantidad: d.Cantidad,
+        precio: d.Precio,
+        subtotal: d.Subtotal
       }))
     });
     
-    // 🔴 Asegurar que siempre sea un array
+    // Asegurar que siempre sea un array
     if (!Array.isArray(detalles)) {
-      console.warn(`⚠️ [BACKEND] Detalles no es array, convirtiendo:`, detalles);
-      res.status(200).json([]);
-      return;
+      console.warn(`⚠️ [BACKEND] Detalles no es array, convirtiendo`);
+      return res.status(200).json([]);
     }
     
     res.status(200).json(detalles);
@@ -37,7 +44,10 @@ export const getDetallesByPedido = async (req, res) => {
     });
   }
 };
-// ← NUEVO CONTROLADOR
+
+// ========================================
+// CREAR DETALLE
+// ========================================
 export const createDetalle = async (req, res) => {
   try {
     const { 
@@ -45,20 +55,22 @@ export const createDetalle = async (req, res) => {
       ProductoId, 
       ServicioId, 
       Cantidad, 
-      Tamaño, 
       Descripcion, 
       UrlImagen, 
       Precio, 
       ColorId 
     } = req.body;
 
-    console.log("🎨 [BACKEND] createDetalle recibido:", {
+    console.log("📝 [BACKEND] createDetalle recibido:", {
       PedidoClienteId,
       ProductoId,
-      ColorId,  // ✅ Verificar si llega aquí
-      body: req.body
+      ServicioId,
+      ColorId,
+      Cantidad,
+      Precio
     });
 
+    // Validaciones
     if (!PedidoClienteId) {
       return res.status(400).json({ error: "PedidoClienteId es obligatorio" });
     }
@@ -67,16 +79,23 @@ export const createDetalle = async (req, res) => {
       return res.status(400).json({ error: "Se requiere ProductoId o ServicioId" });
     }
 
+    if (!Cantidad || Cantidad <= 0) {
+      return res.status(400).json({ error: "Cantidad debe ser mayor a 0" });
+    }
+
+    if (!Precio || Precio <= 0) {
+      return res.status(400).json({ error: "Precio debe ser mayor a 0" });
+    }
+
     const nuevoDetalle = await createDetallePedidoModel({
       PedidoClienteId,
       ProductoId,
       ServicioId,
-      Cantidad,
-      Tamaño: Tamaño || null,
-      Descripcion: Descripcion || "",
+      Cantidad: parseInt(Cantidad),
+      Descripcion: Descripcion || null,
       UrlImagen: UrlImagen || null,
-      Precio: Precio,       
-      ColorId: ColorId || null  // ✅ Pasar el ColorId
+      Precio: parseFloat(Precio),
+      ColorId: ColorId || null
     });
 
     console.log("✅ [BACKEND] Detalle creado:", nuevoDetalle);
@@ -84,10 +103,45 @@ export const createDetalle = async (req, res) => {
     res.status(201).json(nuevoDetalle);
   } catch (error) {
     console.error("❌ [BACKEND] Error al crear detalle:", error);
-    res.status(500).json({ error: "Error al crear detalle" });
+    res.status(500).json({ 
+      error: "Error al crear detalle",
+      details: error.message 
+    });
   }
 };
 
+// ========================================
+// ACTUALIZAR DETALLE
+// ========================================
+export const updateDetalle = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    console.log(`📝 [BACKEND] Actualizando detalle ${id}:`, updates);
+
+    const result = await updateDetallePedidoModel(id, updates);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Detalle no encontrado" });
+    }
+
+    // Obtener el detalle actualizado
+    const [detalleActualizado] = await getDetallePedidoByPedidoIdModel(req.body.PedidoClienteId);
+    
+    res.status(200).json(detalleActualizado);
+  } catch (error) {
+    console.error("❌ [BACKEND] Error al actualizar detalle:", error);
+    res.status(500).json({ 
+      error: "Error al actualizar detalle",
+      details: error.message 
+    });
+  }
+};
+
+// ========================================
+// ELIMINAR DETALLE
+// ========================================
 export const deleteDetalle = async (req, res) => {
   try {
     const result = await deleteDetallePedidoModel(req.params.id);
@@ -98,7 +152,36 @@ export const deleteDetalle = async (req, res) => {
 
     res.status(204).send();
   } catch (error) {
-    console.error("Error al eliminar detalle:", error);
-    res.status(500).json({ error: "Error al eliminar detalle" });
+    console.error("❌ [BACKEND] Error al eliminar detalle:", error);
+    res.status(500).json({ 
+      error: "Error al eliminar detalle",
+      details: error.message 
+    });
+  }
+};
+
+// ========================================
+// ELIMINAR TODOS LOS DETALLES DE UN PEDIDO
+// ========================================
+export const deleteDetallesByPedido = async (req, res) => {
+  try {
+    const { pedidoId } = req.params;
+    
+    console.log(`🗑️ [BACKEND] Eliminando todos los detalles del pedido: ${pedidoId}`);
+    
+    const result = await deleteDetallesByPedidoIdModel(pedidoId);
+    
+    console.log(`✅ [BACKEND] ${result.affectedRows} detalles eliminados`);
+    
+    res.status(200).json({ 
+      message: "Detalles eliminados correctamente",
+      affectedRows: result.affectedRows 
+    });
+  } catch (error) {
+    console.error("❌ [BACKEND] Error al eliminar detalles:", error);
+    res.status(500).json({ 
+      error: "Error al eliminar detalles",
+      details: error.message 
+    });
   }
 };

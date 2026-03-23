@@ -1,212 +1,196 @@
-import {
-    getAllCompras as getAllComprasModel,
-    getCompraById as getCompraByIdModel,
-    createCompra as createCompraModel,
-    deleteCompra as deleteCompraModel,
-    updateCompra as updateCompraModel,
-    updateCompraEstado as updateCompraEstadoModel,
-    getDetallesByCompraId
-} from '../models/compras.model.js';
+import { dbPool } from "../lib/db.js";
 
-import {
-    getDetalleByCompraIdModel,
-    actualizarStockMultiple,
-    getDetallesConProducto
-} from '../models/detalleCompras.model.js';
-
-// Obtener todas las compras
+// 📦 Obtener todas las compras (sin paginación)
 export const getAllCompras = async (req, res) => {
   try {
-    const compras = await getAllComprasModel();
-    res.json(compras);
-  } catch (err) {
-    console.error("Error al obtener las compras:", err.message);
-    res.status(500).json({ error: err.message });
+    const [rows] = await dbPool.query('SELECT * FROM compras ORDER BY FechaRegistro DESC');
+    res.json(rows);
+  } catch (error) {
+    console.error('Error al obtener compras:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
 
-// Obtener compra por ID (con detalles)
+// 🔍 Obtener compra por ID
 export const getCompraById = async (req, res) => {
-  const id = req.params.id;
-
   try {
-    const compra = await getCompraByIdModel(id);
-    if (!compra) return res.status(404).json({ message: "Compra no encontrada" });
-
-    // Obtener detalles de la compra con información del producto
-    const detalles = await getDetallesConProducto(id);
-    compra.detalle = detalles;
-
-    res.json(compra);
-  } catch (err) {
-    console.error("Error al obtener compra por ID:", err.message);
-    res.status(500).json({ error: err.message });
+    const { id } = req.params;
+    const [rows] = await dbPool.query('SELECT * FROM compras WHERE CompraId = ?', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Compra no encontrada' });
+    }
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('Error al obtener compra:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
 
-// Crear nueva compra
+// ➕ Crear nueva compra - SIEMPRE CON ESTADO APROBADO
 export const createCompra = async (req, res) => {
-  const { ProveedorId, Total, FechaRegistro, Estado } = req.body;
-
-  if (!ProveedorId || Total === undefined || !FechaRegistro || !Estado) {
-    return res.status(400).json({ error: "Todos los campos son obligatorios" });
-  }
-
-  const estadosValidos = ['pendiente', 'orden_enviada', 'recibido', 'anulada'];
-  if (!estadosValidos.includes(Estado)) {
-    return res.status(400).json({ error: "Estado no válido" });
-  }
-
   try {
-    const result = await createCompraModel({
-      ProveedorId,
-      Total,
-      FechaRegistro,
-      Estado
+    const { 
+      ProveedorId, 
+      Total 
+    } = req.body;
+    
+    console.log('📝 Creando compra con datos:', req.body);
+    
+    // 🔥 USAR SIEMPRE LA FECHA ACTUAL
+    const fechaActual = new Date();
+    
+    // 1. Generar UUID primero
+    const [uuidResult] = await dbPool.query('SELECT UUID() as uuid');
+    const compraId = uuidResult[0].uuid;
+    
+    console.log('🔑 UUID generado:', compraId);
+    
+    // 2. Insertar la compra con el UUID generado y ESTADO APROBADO
+    await dbPool.query(
+      `INSERT INTO compras 
+       (CompraId, ProveedorId, Total, Estado, FechaRegistro) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        compraId,
+        ProveedorId, 
+        Total || 0, 
+        'aprobado', // 🔥 SIEMPRE APROBADO
+        fechaActual
+      ]
+    );
+    
+    console.log('✅ Compra creada con ID:', compraId);
+    
+    // 3. Responder con los datos de la compra creada
+    res.status(201).json({ 
+      message: 'Compra creada exitosamente',
+      data: {
+        CompraId: compraId,
+        ProveedorId,
+        Total: Total || 0,
+        Estado: 'aprobado', // 🔥 SIEMPRE APROBADO
+        FechaRegistro: fechaActual
+      },
+      CompraId: compraId
     });
-
-    res.status(201).json(result);
-  } catch (err) {
-    console.error("Error al crear la compra:", err.message);
-    res.status(500).json({ error: err.message });
+    
+  } catch (error) {
+    console.error('Error al crear compra:', error);
+    res.status(500).json({ error: 'Error interno del servidor', details: error.message });
   }
 };
 
-// Eliminar compra
-export const deleteCompra = async (req, res) => {
-  const id = req.params.id;
-
-  try {
-    const result = await deleteCompraModel(id);
-
-    if (result.affectedRows === 0) {
-        return res.status(404).json({ message: "Compra no encontrada" });
-    }
-
-    res.json({ message: "Compra eliminada correctamente" });
-  } catch (err) {
-    console.error("Error al eliminar compra:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// Actualizar compra completa
+// ✏️ Actualizar compra completa
 export const updateCompra = async (req, res) => {
-  const id = req.params.id;
-
-  if (!id || id.length !== 36){
-    return res.status(400).json({ error: "ID invalido"});
-  }
-
-  const { ProveedorId, Total, FechaRegistro, Estado, MotivoCancelacion } = req.body;
-
   try {
-    const result = await updateCompraModel(id, {
-      ProveedorId,
-      Total,
-      FechaRegistro,
-      Estado,
-      MotivoCancelacion
-    });
-
-    if (result.affectedRows === 0 ) {
-       return res.status(404).json({ message: "Compra no encontrada" });
+    const { id } = req.params;
+    const { ProveedorId, Total } = req.body;
+    
+    const [result] = await dbPool.query(
+      `UPDATE compras 
+       SET ProveedorId = ?, Total = ? 
+       WHERE CompraId = ?`,
+      [ProveedorId, Total, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Compra no encontrada' });
     }
-
-    res.json({ message: "Compra actualizada correctamente" });
-  } catch (err) {
-    console.error("Error al actualizar compra:", err);
-    res.status(500).json({ error: err.message });
+    
+    const [updatedCompra] = await dbPool.query('SELECT * FROM compras WHERE CompraId = ?', [id]);
+    
+    res.json({ 
+      message: 'Compra actualizada exitosamente', 
+      data: updatedCompra[0] 
+    });
+  } catch (error) {
+    console.error('Error al actualizar compra:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
 
-export const updateCompraEstado = async (req, res) => {
-  const id = req.params.id;
-  const { estado, productos, motivoCancelacion, esAnulacionAutomatica } = req.body;
-
-  if (!id || id.length !== 36) {
-    return res.status(400).json({ error: "ID inválido" });
-  }
-
-  const estadosValidos = ['pendiente', 'recibido', 'anulada'];
-  if (!estadosValidos.includes(estado)) {
-    return res.status(400).json({ error: "Estado no válido" });
-  }
-
+// 🗑️ Eliminar compra
+export const deleteCompra = async (req, res) => {
   try {
-    const compra = await getCompraByIdModel(id);
-    if (!compra) {
-      return res.status(404).json({ message: "Compra no encontrada" });
+    const { id } = req.params;
+    
+    // Primero eliminar los detalles de la compra (si existen)
+    await dbPool.query('DELETE FROM detalle_compras WHERE CompraId = ?', [id]);
+    
+    // Luego eliminar la compra
+    const [result] = await dbPool.query('DELETE FROM compras WHERE CompraId = ?', [id]);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Compra no encontrada' });
     }
+    
+    res.json({ message: 'Compra eliminada exitosamente', CompraId: id });
+  } catch (error) {
+    console.error('Error al eliminar compra:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
 
-    // Si es anulación automática, verificar tiempo
-    if (esAnulacionAutomatica && estado === 'anulada') {
-      const puedeAnular = await puedeAnularseAutomaticamente(id);
-      if (!puedeAnular) {
-        return res.status(400).json({ 
-          error: "La compra no puede anularse automáticamente (menos de 1 hora)" 
-        });
+// 📄 Compras con paginación
+export const getComprasPaginated = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const [rows] = await dbPool.query(
+      'SELECT * FROM compras ORDER BY FechaRegistro DESC LIMIT ? OFFSET ?', 
+      [limit, offset]
+    );
+    
+    const [total] = await dbPool.query('SELECT COUNT(*) as total FROM compras');
+
+    res.json({
+      data: rows,
+      pagination: {
+        total: total[0].total,
+        currentPage: page,
+        itemsPerPage: limit,
+        totalPages: Math.ceil(total[0].total / limit)
       }
-    }
+    });
+  } catch (error) {
+    console.error('Error en paginación de compras:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
 
-    // Si el estado es "recibido", actualizar stock de productos
-    if (estado === 'recibido') {
-      let itemsAActualizar = productos;
-      
-      if (!itemsAActualizar || itemsAActualizar.length === 0) {
-        const detalles = await getDetalleByCompraIdModel(id);
-        itemsAActualizar = detalles.map(d => ({
-          ProductoId: d.ProductoId,
-          ColorId: d.ColorId,
-          Cantidad: d.Cantidad,
-          colores: d.colores
-        }));
+export const buscarCompras = async (req, res) => {
+  try {
+    const { q, page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+    const searchTerm = `%${q}%`;
+
+    const [rows] = await dbPool.query(
+      `SELECT * FROM compras 
+       WHERE ProveedorId LIKE ? OR CompraId LIKE ?
+       ORDER BY FechaRegistro DESC 
+       LIMIT ? OFFSET ?`,
+      [searchTerm, searchTerm, parseInt(limit), parseInt(offset)]
+    );
+
+    const [total] = await dbPool.query(
+      `SELECT COUNT(*) as total FROM compras 
+       WHERE ProveedorId LIKE ? OR CompraId LIKE ?`,
+      [searchTerm, searchTerm]
+    );
+
+    res.json({
+      data: rows,
+      pagination: {
+        totalItems: total[0].total,
+        currentPage: parseInt(page),
+        itemsPerPage: parseInt(limit),
+        totalPages: Math.ceil(total[0].total / limit)
       }
-
-      if (itemsAActualizar.length === 0) {
-        return res.status(400).json({ error: "No hay productos para actualizar el stock" });
-      }
-
-      const resultadoStock = await actualizarStockMultiple(itemsAActualizar);
-      await updateCompraEstadoModel(id, estado, motivoCancelacion);
-
-      res.json({ 
-        message: "Compra recibida y stock actualizado correctamente",
-        stockActualizado: resultadoStock
-      });
-    } 
-    // Si es anulación, restaurar stock (restar)
-    else if (estado === 'anulada') {
-      if (!motivoCancelacion) {
-        return res.status(400).json({ error: "Debe proporcionar un motivo de cancelación" });
-      }
-      
-      // Si la compra estaba recibida, restaurar stock
-      if (compra.Estado === 'recibido') {
-        const detalles = await getDetalleByCompraIdModel(id);
-        const productosARestaurar = detalles.map(d => ({
-          ProductoId: d.ProductoId,
-          Cantidad: -d.Cantidad, // Negativo para restar
-          colores: d.colores ? d.colores.map(c => ({
-            ...c,
-            Stock: -c.Stock
-          })) : []
-        }));
-        
-        await actualizarStockMultiple(productosARestaurar);
-      }
-      
-      await updateCompraEstadoModel(id, estado, motivoCancelacion);
-      res.json({ message: "Compra anulada correctamente" });
-    }
-    // Para otros estados, solo actualizar el estado
-    else {
-      await updateCompraEstadoModel(id, estado, motivoCancelacion);
-      res.json({ message: `Estado actualizado a ${estado} correctamente` });
-    }
-
-  } catch (err) {
-    console.error("Error al actualizar estado de compra:", err);
-    res.status(500).json({ error: err.message });
+    });
+  } catch (error) {
+    console.error('Error en búsqueda de compras:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
   }
 };

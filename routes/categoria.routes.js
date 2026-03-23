@@ -4,15 +4,28 @@ import {
   getCategoriaById,
   createCategoria,
   deleteCategoria,
-  updateCategoria
+  updateCategoria,
+  getCategoriasPaginated,
+  buscarCategorias
 } from '../controllers/categoria.controller.js';
 
 const router = express.Router();
 
-router.get('/', getAllCategorias);
+// 🔥 Ruta principal con paginación (GET /api/categorias)
+router.get('/', getCategoriasPaginated);
+
+// 🔥 Ruta de búsqueda con paginación (GET /api/categorias/buscar)
+router.get('/buscar', buscarCategorias);
+
+router.get('/todas', getAllCategorias);
+
+
+// Rutas específicas (deben ir después de las rutas dinámicas con parámetros)
 router.get('/:id', getCategoriaById);
 router.post('/', createCategoria);
-router.delete('/:id', deleteCategoria);
 router.put('/:id', updateCategoria);
+router.delete('/:id', deleteCategoria);
+
+
 
 export default router;

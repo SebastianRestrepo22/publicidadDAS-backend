@@ -6,12 +6,12 @@ const router = express.Router();
 
 const calcularVariacion = (actual, anterior) => {
   if (anterior === 0) return actual > 0 ? 100 : 0;
-  return ((actual - anterior) / anterior * 100).toFixed(1);
+  return Number(((actual - anterior) / anterior * 100).toFixed(1));
 };
 
 router.get('/stats', async (req, res) => {
   try {
-    // 1. ✅ Ventas mensuales - CORREGIDO para ONLY_FULL_GROUP_BY
+    // 1. Ventas mensuales (últimos 6 meses)
     const [ventasMensuales] = await dbPool.query(`
       SELECT 
         MIN(DATE_FORMAT(FechaVenta, '%b')) as mes,
@@ -24,7 +24,7 @@ router.get('/stats', async (req, res) => {
       ORDER BY mes_orden ASC
     `);
 
-    // 2. ✅ Ventas semanales - CORREGIDO
+    // 2. Ventas semanales (últimas 6 semanas)
     const [ventasSemanales] = await dbPool.query(`
       SELECT 
         MIN(CONCAT('S', WEEK(FechaVenta))) as semana,
@@ -37,7 +37,7 @@ router.get('/stats', async (req, res) => {
       ORDER BY orden ASC
     `);
 
-    // 3. ✅ Pedidos semanales - CORREGIDO
+    // 3. Pedidos semanales (últimas 6 semanas)
     const [pedidosSemanales] = await dbPool.query(`
       SELECT 
         MIN(CONCAT('S', WEEK(FechaRegistro))) as semana,
@@ -50,24 +50,21 @@ router.get('/stats', async (req, res) => {
       ORDER BY orden ASC
     `);
 
-    // 4. ✅ Usuarios para pie chart - CORREGIDO (sin GROUP BY problemático)
-    const [usuariosData] = await dbPool.query(`
+    // 4. Compras semanales (últimas 6 semanas)
+    const [comprasSemanales] = await dbPool.query(`
       SELECT 
-        COUNT(DISTINCT CASE 
-          WHEN FechaRegistro >= DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN ClienteId 
-        END) as nuevos,
-        COUNT(DISTINCT CASE 
-          WHEN FechaRegistro >= DATE_SUB(NOW(), INTERVAL 3 MONTH) 
-          AND FechaRegistro < DATE_SUB(NOW(), INTERVAL 1 MONTH) THEN ClienteId 
-        END) as activos,
-        COUNT(DISTINCT CASE 
-          WHEN FechaRegistro < DATE_SUB(NOW(), INTERVAL 3 MONTH) THEN ClienteId 
-        END) as inactivos
-      FROM pedidosclientes
-      WHERE ClienteId IS NOT NULL
+        MIN(CONCAT('S', WEEK(FechaRegistro))) as semana,
+        COUNT(*) as compras,
+        COALESCE(SUM(Total), 0) as total_compras,
+        YEARWEEK(FechaRegistro) as orden
+      FROM compras
+      WHERE FechaRegistro >= DATE_SUB(NOW(), INTERVAL 6 WEEK)
+        AND Estado IN ('aprobado', 'recibido')
+      GROUP BY YEARWEEK(FechaRegistro)
+      ORDER BY orden ASC
     `);
 
-    // 5. ✅ Totales para tarjetas - Sin GROUP BY, sin problema
+    // 5. Totales del último mes
     const [totales] = await dbPool.query(`
       SELECT
         COALESCE((SELECT SUM(Total) FROM ventas 
@@ -76,11 +73,12 @@ router.get('/stats', async (req, res) => {
         COALESCE((SELECT COUNT(*) FROM pedidosclientes 
          WHERE FechaRegistro >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
          AND Estado IN ('aprobado', 'entregado')), 0) as pedidos,
-        COALESCE((SELECT COUNT(DISTINCT ClienteId) FROM pedidosclientes 
-         WHERE FechaRegistro >= DATE_SUB(NOW(), INTERVAL 1 MONTH)), 0) as usuarios_activos
+        COALESCE((SELECT SUM(Total) FROM compras 
+         WHERE FechaRegistro >= DATE_SUB(NOW(), INTERVAL 1 MONTH)
+         AND Estado IN ('aprobado', 'recibido')), 0) as total_compras_mes
     `);
 
-    // 6. ✅ Variaciones - Sin GROUP BY, sin problema
+    // 6. Variaciones para cálculos
     const [variaciones] = await dbPool.query(`
       SELECT
         COALESCE((SELECT SUM(Total) FROM ventas 
@@ -97,57 +95,70 @@ router.get('/stats', async (req, res) => {
          WHERE FechaRegistro >= DATE_SUB(NOW(), INTERVAL 2 MONTH)
          AND FechaRegistro < DATE_SUB(NOW(), INTERVAL 1 MONTH)
          AND Estado IN ('aprobado', 'entregado')), 0) as mes_anterior_pedidos,
-        COALESCE((SELECT COUNT(DISTINCT ClienteId) FROM pedidosclientes 
-         WHERE FechaRegistro >= DATE_SUB(NOW(), INTERVAL 1 MONTH)), 0) as usuarios_actual,
-        COALESCE((SELECT COUNT(DISTINCT ClienteId) FROM pedidosclientes 
-         WHERE FechaRegistro >= DATE_SUB(NOW(), INTERVAL 2 MONTH)
-         AND FechaRegistro < DATE_SUB(NOW(), INTERVAL 1 MONTH)), 0) as usuarios_anterior
+        COALESCE((SELECT SUM(Total) FROM ventas 
+         WHERE FechaVenta >= DATE_SUB(NOW(), INTERVAL 1 WEEK)
+         AND Estado = 'pagado'), 0) as semana_actual_ventas,
+        COALESCE((SELECT SUM(Total) FROM ventas 
+         WHERE FechaVenta >= DATE_SUB(NOW(), INTERVAL 2 WEEK)
+         AND FechaVenta < DATE_SUB(NOW(), INTERVAL 1 WEEK)
+         AND Estado = 'pagado'), 0) as semana_anterior_ventas
     `);
 
     // Calcular variaciones
     const v = variaciones[0];
     const variacionVentas = calcularVariacion(v.mes_actual_ventas, v.mes_anterior_ventas);
     const variacionPedidos = calcularVariacion(v.mes_actual_pedidos, v.mes_anterior_pedidos);
-    const variacionUsuarios = calcularVariacion(v.usuarios_actual, v.usuarios_anterior);
-    const crecimiento = calcularVariacion(v.mes_actual_ventas, v.mes_anterior_ventas);
+    const variacionSemanalVentas = calcularVariacion(v.semana_actual_ventas, v.semana_anterior_ventas);
 
-    // 7. Respuesta estructurada
+    // Crecimiento basado en ventas
+    // Crecimiento basado en ventas y pedidos
+    const crecimientoVentas = calcularVariacion(v.mes_actual_ventas, v.mes_anterior_ventas);
+    const crecimientoPedidos = calcularVariacion(v.mes_actual_pedidos, v.mes_anterior_pedidos);
+    const crecimiento = Number(((crecimientoVentas + crecimientoPedidos) / 2).toFixed(1));
+
+    // Calcular promedio de compras semanales
+    const comprasPromedio = comprasSemanales.length > 0
+      ? Number((comprasSemanales.reduce((sum, item) => sum + Number(item.compras), 0) / comprasSemanales.length).toFixed(0))
+      : 0;
+
+    // Respuesta estructurada (SIN USUARIOS)
     const dashboardData = {
-      ventasMensuales: ventasMensuales.map(item => ({ 
-        mes: item.mes, 
-        ventas: Number(item.ventas) 
+      ventasMensuales: ventasMensuales.map(item => ({
+        mes: item.mes,
+        ventas: Number(item.ventas)
       })),
-      ventasSemanales: ventasSemanales.map(item => ({ 
-        semana: item.semana, 
-        ventas: Number(item.ventas) 
+      ventasSemanales: ventasSemanales.map(item => ({
+        semana: item.semana,
+        ventas: Number(item.ventas)
       })),
-      pedidosSemanales: pedidosSemanales.map(item => ({ 
-        semana: item.semana, 
-        pedidos: Number(item.pedidos) 
+      pedidosSemanales: pedidosSemanales.map(item => ({
+        semana: item.semana,
+        pedidos: Number(item.pedidos)
       })),
-      usuariosActivos: [
-        { name: "Nuevos", value: Number(usuariosData[0]?.nuevos || 0), color: "#3b82f6" },
-        { name: "Activos", value: Number(usuariosData[0]?.activos || 0), color: "#10b981" },
-        { name: "Inactivos", value: Number(usuariosData[0]?.inactivos || 0), color: "#f59e0b" }
-      ],
+      comprasSemanales: comprasSemanales.map(item => ({
+        semana: item.semana,
+        compras: Number(item.compras)
+      })),
       totales: {
         ventasTotales: Number(totales[0]?.ventas_totales || 0),
         pedidos: Number(totales[0]?.pedidos || 0),
-        usuariosActivos: Number(totales[0]?.usuarios_activos || 0),
+        comprasSemanales: comprasPromedio,
         crecimiento: Number(crecimiento),
-        variacionVentas: Number(variacionVentas),
-        variacionPedidos: Number(variacionPedidos),
-        variacionUsuarios: Number(variacionUsuarios),
-        variacionCrecimiento: Number(variacionVentas)
+        variacionVentas: variacionVentas,
+        variacionPedidos: variacionPedidos,
+        variacionCrecimiento: variacionSemanalVentas,
+        totalComprasMes: Number(totales[0]?.total_compras_mes || 0)
       }
     };
 
+    console.log('📊 Dashboard data:', JSON.stringify(dashboardData, null, 2));
     res.json(dashboardData);
+
   } catch (error) {
     console.error('❌ Error en dashboard:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al obtener datos del dashboard',
-      details: error.message 
+      details: error.message
     });
   }
 });

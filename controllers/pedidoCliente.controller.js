@@ -6,6 +6,8 @@ import {
   updatePedidoClienteModel,
   deletePedidoClienteModel,
   getClienteByIdModel,
+  getPedidosClientesPaginated,
+  buscarPedidosClientesPaginated
 } from "../models/pedidoCliente.model.js";
 import {
   createDetallePedidoModel,
@@ -14,116 +16,290 @@ import {
   deleteDetallesByPedidoIdModel
 } from "../models/detallePedidoCliente.model.js";
 import { crearVentaDesdePedidoId } from "./ventas.controller.js";
-import QRCode from "qrcode";
-import { getAllColoresDB } from "../models/color.model.js";
 import { v4 as uuidv4 } from "uuid";
 import fs from 'fs';
 import { dbPool } from "../lib/db.js";
 
-// ========================================
-// 📎 SUBIR VOUCHER A PEDIDO
-// ========================================
-export const uploadVoucherToPedido = async (req, res) => {
+export const getPedidosClientes = async (req, res) => {
   try {
-    const { id } = req.params;
-    const file = req.file;
+    console.log('🔍 [CONTROLLER] Obteniendo pedidos con paginación');
 
-    console.log('📥 [CONTROLLER] Recibida petición para subir voucher a pedido:', id);
-    console.log('📎 Archivo recibido:', file ? file.originalname : 'No hay archivo');
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const filtroCampo = req.query.filtroCampo || null;
+    const filtroValor = req.query.filtroValor || null;
+    const tipoPago = req.query.tipoPago || null;
 
-    if (!file) {
-      return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
+    console.log('📦 Parámetros:', { page, limit, filtroCampo, filtroValor, tipoPago });
+
+    const offset = (page - 1) * limit;
+    let whereClause = '';
+    let params = [];
+
+    // Construir WHERE clause
+    const whereConditions = [];
+
+    // 🔥 NUEVO: Excluir pedidos de landing (origen = 'cliente')
+    whereConditions.push(`p.Origen != 'cliente'`);
+
+    if (tipoPago) {
+      whereConditions.push('p.MetodoPago = ?');
+      params.push(tipoPago);
     }
 
-    // Verificar que el pedido existe
-    const pedidoExistente = await getPedidoClienteByIdModel(id);
-    if (!pedidoExistente) {
-      console.log('❌ Pedido no encontrado:', id);
-      fs.unlink(file.path, (err) => {
-        if (err) console.error('Error eliminando archivo huérfano:', err);
-      });
-      return res.status(404).json({ error: 'Pedido no encontrado' });
+    if (filtroCampo && filtroValor) {
+      let campoDB;
+      switch (filtroCampo) {
+        case 'PedidoClienteId':
+          campoDB = 'p.PedidoClienteId';
+          break;
+        case 'NombreCliente':
+          campoDB = 'COALESCE(u.NombreCompleto, p.ClienteNombre)';
+          break;
+        case 'FechaRegistro':
+          campoDB = 'p.FechaRegistro';
+          break;
+        case 'MetodoPago':
+          campoDB = 'p.MetodoPago';
+          break;
+        case 'Estado':
+          campoDB = 'p.Estado';
+          break;
+        default:
+          campoDB = filtroCampo;
+      }
+
+      whereConditions.push(`${campoDB} LIKE ?`);
+      params.push(`%${filtroValor}%`);
     }
 
-    // Construir URL del voucher
-    const protocol = req.protocol;
-    const host = req.get('host');
-    const voucherUrl = `${protocol}://${host}/uploads/vouchers/${file.filename}`;
+    // 🔥 MISMA LÓGICA: Solo mostrar pedidos que deben estar en el módulo de pedidos
+    whereConditions.push(`(
+      p.MetodoPago = 'contra_entrega' 
+      OR 
+      (p.MetodoPago IN ('transferencia', 'efectivo', 'QR') AND p.Estado != 'aprobado')
+    )`);
 
-    console.log('📝 Actualizando pedido con voucher:', voucherUrl);
-
-    // Actualizar el pedido con el voucher
-    const result = await updatePedidoClienteModel(id, { Voucher: voucherUrl });
-
-    if (result.affectedRows === 0) {
-      throw new Error('No se pudo actualizar el pedido');
+    if (whereConditions.length > 0) {
+      whereClause = 'WHERE ' + whereConditions.join(' AND ');
     }
 
-    // Obtener el pedido actualizado con detalles
-    const pedidoActualizado = await getPedidoClienteByIdModel(id);
-    pedidoActualizado.detalle = await getDetallePedidoByPedidoIdModel(id);
+    // ⚠️ IMPORTANTE: Usar literales para LIMIT y OFFSET
+    const query = `
+      SELECT
+        p.PedidoClienteId,
+        p.ClienteId,
+        COALESCE(u.NombreCompleto, p.ClienteNombre) AS NombreCliente,
+        p.FechaRegistro,
+        p.Total,
+        p.Estado,
+        p.MetodoPago,
+        p.Voucher,
+        p.NombreRecibe,
+        p.TelefonoEntrega,
+        p.DireccionEntrega,
+        p.TipoCliente,
+        p.ClienteNombre,
+        p.ClienteTelefono,
+        p.ClienteCorreo,
+        p.Origen
+      FROM pedidosclientes p
+      LEFT JOIN usuarios u ON p.ClienteId = u.CedulaId
+      ${whereClause}
+      ORDER BY p.FechaRegistro DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
 
-    // Enviar email de confirmación al cliente
-    if (pedidoActualizado.ClienteId) {
+    console.log('📝 Query:', query);
+    console.log('📝 Params WHERE:', params);
+
+    // Ejecutar consulta principal
+    const [rows] = await dbPool.query(query, params);
+
+    // Consulta para total
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM pedidosclientes p
+      LEFT JOIN usuarios u ON p.ClienteId = u.CedulaId
+      ${whereClause}
+    `;
+
+    const [countResult] = await dbPool.execute(countQuery, params);
+
+    console.log(`✅ ${rows.length} pedidos encontrados de ${countResult[0].total} total`);
+
+    // Obtener detalles para cada pedido
+    for (let p of rows) {
       try {
-        const cliente = await getClienteByIdModel(pedidoActualizado.ClienteId);
-        if (cliente?.CorreoElectronico) {
-          await sendVoucherEmail(
-            cliente.CorreoElectronico,
-            cliente.NombreCompleto || `${cliente.Nombre} ${cliente.Apellido}`,
-            id,
-            voucherUrl
-          );
-          console.log('📧 Email de voucher enviado');
-        }
-      } catch (emailError) {
-        console.error('⚠️ Error enviando email de voucher:', emailError);
+        p.detalle = await getDetallePedidoByPedidoIdModel(p.PedidoClienteId);
+      } catch (detalleError) {
+        console.error(`⚠️ Error obteniendo detalles para pedido ${p.PedidoClienteId}:`, detalleError.message);
+        p.detalle = [];
       }
     }
 
-    console.log('✅ Pedido actualizado con voucher exitosamente');
-
-    res.json({
-      success: true,
-      message: 'Voucher subido correctamente',
-      voucher: voucherUrl,
-      pedido: pedidoActualizado
+    res.status(200).json({
+      data: rows,
+      pagination: {
+        totalItems: countResult[0].total,
+        totalPages: Math.ceil(countResult[0].total / limit),
+        currentPage: page,
+        itemsPerPage: limit
+      }
     });
 
   } catch (error) {
-    console.error('❌ Error al subir voucher:', error);
+    console.error('❌ [CONTROLLER] Error al obtener pedidos:', error);
+    res.status(500).json({
+      error: "Error al obtener pedidos",
+      details: error.message
+    });
+  }
+};
 
-    if (req.file) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error('Error eliminando archivo tras error:', err);
-      });
+export const buscarPedidos = async (req, res) => {
+  const { campo, valor, page = 1, limit = 10, tipoPago } = req.query;
+
+  console.log('🔍 [BUSCAR] Parámetros:', { campo, valor, page, limit, tipoPago });
+
+  const columnasPermitidas = {
+    id: 'p.PedidoClienteId',
+    cliente: 'COALESCE(u.NombreCompleto, p.ClienteNombre)',
+    fecha: 'p.FechaRegistro',
+    metodo: 'p.MetodoPago',
+    estado: 'p.Estado'
+  };
+
+  const columna = columnasPermitidas[campo];
+
+  if (!columna) {
+    return res.status(400).json({ message: 'Campo de búsqueda inválido' });
+  }
+
+  try {
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    let whereClause = '';
+    let params = [];
+
+    // Construir condiciones WHERE
+    const whereConditions = [];
+
+    // 🔥 NUEVO: Excluir pedidos de landing (origen = 'cliente')
+    whereConditions.push(`p.Origen != 'cliente'`);
+
+    // Búsqueda por campo específico
+    if (campo && valor) {
+      whereConditions.push(`${columna} LIKE ?`);
+      params.push(`%${valor}%`);
     }
 
+    // Filtro por tipo de pago
+    if (tipoPago) {
+      whereConditions.push('p.MetodoPago = ?');
+      params.push(tipoPago);
+    }
+
+    // 🔥 MISMA LÓGICA: Solo mostrar pedidos que deben estar en el módulo de pedidos
+    whereConditions.push(`(
+      p.MetodoPago = 'contra_entrega' 
+      OR 
+      (p.MetodoPago IN ('transferencia', 'efectivo', 'QR') AND p.Estado != 'aprobado')
+    )`);
+
+    if (whereConditions.length > 0) {
+      whereClause = 'WHERE ' + whereConditions.join(' AND ');
+    }
+
+    // ⚠️ IMPORTANTE: Usar literales para LIMIT y OFFSET
+    const query = `
+      SELECT
+        p.PedidoClienteId,
+        p.ClienteId,
+        COALESCE(u.NombreCompleto, p.ClienteNombre) AS NombreCliente,
+        p.FechaRegistro,
+        p.Total,
+        p.Estado,
+        p.MetodoPago,
+        p.Voucher,
+        p.NombreRecibe,
+        p.TelefonoEntrega,
+        p.DireccionEntrega,
+        p.TipoCliente,
+        p.ClienteNombre,
+        p.ClienteTelefono,
+        p.ClienteCorreo,
+        p.Origen
+      FROM pedidosclientes p
+      LEFT JOIN usuarios u ON p.ClienteId = u.CedulaId
+      ${whereClause}
+      ORDER BY p.FechaRegistro DESC
+      LIMIT ${limitNum} OFFSET ${offset}
+    `;
+
+    console.log('📝 [BUSCAR] Query:', query);
+    console.log('📝 [BUSCAR] Params:', params);
+
+    const [rows] = await dbPool.query(query, params);
+
+    // Consulta para total
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM pedidosclientes p
+      LEFT JOIN usuarios u ON p.ClienteId = u.CedulaId
+      ${whereClause}
+    `;
+
+    const [countResult] = await dbPool.execute(countQuery, params);
+
+    console.log(`✅ [BUSCAR] ${rows.length} resultados de ${countResult[0].total} total`);
+
+    // Obtener detalles para cada pedido
+    for (let p of rows) {
+      try {
+        p.detalle = await getDetallePedidoByPedidoIdModel(p.PedidoClienteId);
+      } catch (detalleError) {
+        console.error(`⚠️ Error obteniendo detalles para pedido ${p.PedidoClienteId}:`, detalleError.message);
+        p.detalle = [];
+      }
+    }
+
+    res.status(200).json({
+      data: rows,
+      pagination: {
+        totalItems: countResult[0].total,
+        totalPages: Math.ceil(countResult[0].total / limitNum),
+        currentPage: pageNum,
+        itemsPerPage: limitNum
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [BUSCAR] Error al buscar pedidos:', error);
     res.status(500).json({
-      error: 'Error al procesar el voucher',
-      message: error.message
+      message: 'Error interno del servidor',
+      error: error.message
     });
   }
 };
 
 // ========================================
-// ✅ CREAR PEDIDO - MANEJA FORMDATA Y JSON PURO
+// ✅ CREAR PEDIDO (CORREGIDO - LANDING VA A VENTAS COMO PENDIENTE)
 // ========================================
 export const createPedidoCliente = async (req, res) => {
   let nuevoPedido = null;
 
   try {
     console.log('🔍 [CONTROLLER] Creando pedido...');
-    console.log('📁 Archivo recibido:', req.file);
     console.log('📦 Body recibido:', req.body);
 
-    // 🔄 Detectar si viene como FormData (con archivo) o JSON puro
     let pedidoData;
     if (typeof req.body.pedido === 'string') {
       try {
         pedidoData = JSON.parse(req.body.pedido);
       } catch (error) {
-        console.error('❌ Error parseando JSON del pedido (FormData):', error);
         return res.status(400).json({
           error: 'Datos del pedido inválidos',
           details: error.message
@@ -147,10 +323,13 @@ export const createPedidoCliente = async (req, res) => {
       ClienteNombre = null,
       ClienteTelefono = null,
       ClienteCorreo = null,
+      Origen = "admin",
       detalle = []
     } = pedidoData;
 
-    // 🔥 CORRECCIÓN: Validar y sanitizar el Total
+    console.log('📌 ORIGEN RECIBIDO:', Origen);
+
+    // Validar Total
     const totalLimpio = parseFloat(Total);
     if (isNaN(totalLimpio) || totalLimpio <= 0) {
       return res.status(400).json({ error: "Total inválido o no numérico" });
@@ -166,67 +345,58 @@ export const createPedidoCliente = async (req, res) => {
       const protocol = req.protocol;
       const host = req.get('host');
       voucherUrl = `${protocol}://${host}/uploads/vouchers/${req.file.filename}`;
-      console.log('✅ URL del voucher:', voucherUrl);
     }
 
-    // Procesar fecha
     const fechaProcesada = FechaRegistro
       ? FechaRegistro.split("T")[0]
       : new Date().toISOString().split("T")[0];
 
-    // 🔥 CORRECCIÓN: Usar totalLimpio ya validado
+    // 🔥 NUEVA LÓGICA:
+    // - Admin: estado = 'pendiente' (aparece en módulo de pedidos)
+    // - Landing: estado = 'pendiente' pero va directamente a ventas
+    const esLanding = Origen === 'cliente';
+    const estadoInicial = "pendiente"; // AMBOS COMIENZAN COMO PENDIENTE
+
+    console.log(`📊 Origen: ${Origen}, Es landing: ${esLanding}, Estado inicial: ${estadoInicial}`);
+
+    // Crear pedido (siempre pendiente)
     nuevoPedido = await createPedidoClienteModel({
       ClienteId: ClienteId || null,
       FechaRegistro: fechaProcesada,
-      Total: totalLimpio,  // ✅ Valor ya parseado y validado
+      Total: totalLimpio,
       MetodoPago,
       Voucher: voucherUrl || null,
       NombreRecibe: NombreRecibe || null,
       TelefonoEntrega: TelefonoEntrega || null,
       DireccionEntrega: DireccionEntrega || null,
-      Estado,
+      Estado: estadoInicial,
       TipoCliente,
       ClienteNombre: ClienteNombre || null,
       ClienteTelefono: ClienteTelefono || null,
-      ClienteCorreo: ClienteCorreo || null
+      ClienteCorreo: ClienteCorreo || null,
+      Origen
     });
 
-    console.log("✅ Pedido creado:", nuevoPedido.PedidoClienteId);
+    console.log("✅ Pedido creado en BD:", nuevoPedido);
+    console.log("📊 Estado guardado en BD:", nuevoPedido.Estado);
+    console.log("📊 Origen guardado:", nuevoPedido.Origen);
 
     // Crear detalles del pedido
     for (let i = 0; i < detalle.length; i++) {
       const item = detalle[i];
 
-      console.log(`📝 [BACKEND] Procesando detalle ${i + 1}:`, {
-        ProductoId: item.ProductoId,
-        ServicioId: item.ServicioId,
-        UrlImagen: item.UrlImagen,
-        UrlImagenPersonalizada: item.UrlImagenPersonalizada,
-        tipoUrlImagen: typeof item.UrlImagenPersonalizada,
-        tieneImagenPersonalizada: !!item.UrlImagenPersonalizada
-      });
-
-
       const ProductoId = item.ProductoId || null;
       const ServicioId = item.ServicioId || null;
       const Cantidad = item.Cantidad ? parseInt(item.Cantidad) : 1;
-
-      // 🔥 CORRECCIÓN: Sanitizar precio del detalle
       const Precio = parseFloat(item.PrecioUnitario || item.Precio || 0);
-
       const ColorId = item.ColorId || null;
-      const Tamaño = ServicioId
-        ? (item.Tamaño ?? item.DimensionesId ?? "Mediana")
-        : null;
+      const Tamaño = null;
       const Descripcion = item.Descripcion || null;
-
-      // 🔴 IMPORTANTE: Separar imagen por defecto de imagen personalizada
       const UrlImagen = item.UrlImagen ? item.UrlImagen.trim() : null;
-      const UrlImagenPersonalizada = item.UrlImagenPersonalizada || null;
+      const UrlImagenPersonalizada = null;
 
       const Subtotal = parseFloat((Cantidad * Precio).toFixed(2));
 
-      // Validar campos requeridos
       if (!ProductoId && !ServicioId) {
         throw new Error(`Detalle ${i + 1}: Se requiere ProductoId o ServicioId`);
       }
@@ -243,21 +413,48 @@ export const createPedidoCliente = async (req, res) => {
         ProductoId,
         ServicioId,
         Cantidad,
-        Precio,  // ✅ Ya es número válido
+        Precio,
         ColorId,
         Tamaño,
         Descripcion,
         UrlImagen,
-        UrlImagenPersonalizada, // 🔴 IMAGEN DEL CLIENTE
+        UrlImagenPersonalizada,
         Subtotal
       });
-
-      console.log(`✅ Detalle ${i + 1} creado - Subtotal: $${Subtotal}`);
     }
 
-    // Obtener pedido completo con detalles
+    // Obtener pedido completo
     const pedidoCompleto = await getPedidoClienteByIdModel(nuevoPedido.PedidoClienteId);
     pedidoCompleto.detalle = await getDetallePedidoByPedidoIdModel(nuevoPedido.PedidoClienteId);
+
+    console.log("📦 Pedido completo:", {
+      id: pedidoCompleto.PedidoClienteId,
+      estado: pedidoCompleto.Estado,
+      metodo: pedidoCompleto.MetodoPago,
+      origen: pedidoCompleto.Origen
+    });
+
+    // 🔥 SI ES LANDING, CREAR VENTA AUTOMÁTICAMENTE COMO PENDIENTE
+    if (esLanding) {
+      try {
+        console.log(`💰 Creando venta pendiente para pedido desde landing (${MetodoPago})`);
+
+        const resultadoVenta = await crearVentaDesdePedidoId(pedidoCompleto.PedidoClienteId, null);
+
+        if (resultadoVenta.success) {
+          console.log(`✅ Venta creada automáticamente como PENDIENTE: ${resultadoVenta.VentaId}`);
+          pedidoCompleto.ventaCreada = {
+            id: resultadoVenta.VentaId,
+            estado: 'pendiente', // ← AHORA ES PENDIENTE
+            origen: 'landing'
+          };
+        } else {
+          console.warn(`⚠️ No se pudo crear la venta: ${resultadoVenta.message || 'Error desconocido'}`);
+        }
+      } catch (ventaError) {
+        console.error(`❌ Error creando venta automática:`, ventaError);
+      }
+    }
 
     // Enviar email de confirmación
     if (pedidoCompleto.ClienteId) {
@@ -267,27 +464,23 @@ export const createPedidoCliente = async (req, res) => {
           cliente.CorreoElectronico,
           cliente.NombreCompleto || `${cliente.Nombre} ${cliente.Apellido}`,
           nuevoPedido.PedidoClienteId,
-          "pendiente",
-          "Tu pedido ha sido recibido y está en proceso"
+          pedidoCompleto.Estado,
+          esLanding
+            ? "Tu pedido ha sido recibido y está pendiente de confirmación"
+            : "Tu pedido ha sido recibido y está pendiente de confirmación"
         );
       }
     }
 
-    console.log("🎉 Pedido completado exitosamente");
     res.status(201).json(pedidoCompleto);
 
   } catch (error) {
     console.error("❌ Error al crear pedido:", error.message);
 
-    // Limpiar pedido huérfano
     if (nuevoPedido?.PedidoClienteId) {
       try {
-        console.log(`🗑️ Eliminando detalles del pedido huérfano: ${nuevoPedido.PedidoClienteId}`);
         await deleteDetallesByPedidoIdModel(nuevoPedido.PedidoClienteId);
-
-        console.log(`🗑️ Eliminando pedido huérfano: ${nuevoPedido.PedidoClienteId}`);
         await deletePedidoClienteModel(nuevoPedido.PedidoClienteId);
-        console.log(`✅ Pedido huérfano eliminado`);
       } catch (cleanupError) {
         console.error("❌ Error limpiando pedido huérfano:", cleanupError);
       }
@@ -306,256 +499,202 @@ export const createPedidoCliente = async (req, res) => {
   }
 };
 
-// ✅ ACTUALIZAR PEDIDO - CON ENVÍO DE CORREO AUTOMÁTICO
-// ========================================
+//✅ ACTUALIZAR PEDIDO (CON SOPORTE PARA VOUCHER)
 export const updatePedidoCliente = async (req, res) => {
   const { id } = req.params;
   let updates = { ...req.body };
 
-  // Declarar variables al inicio del ámbito de la función
-  let destinatario = null;
-  let nombreCliente = 'Cliente';
-
   try {
     console.log('🔍 [PEDIDOS] ===== INICIANDO ACTUALIZACIÓN =====');
-    console.log('📦 ID del pedido (PedidoClienteId):', id);
+    console.log('📦 ID del pedido:', id);
     console.log('📦 Updates recibidos:', updates);
-    console.log('📦 Nuevo estado:', updates.Estado);
+    console.log('📦 Archivo recibido:', req.file);
 
-    // Validar que el estado sea uno de los permitidos
-    if (updates.Estado) {
-      const estadosPermitidos = ['pendiente', 'aprobado', 'cancelado', 'entregado'];
-      if (!estadosPermitidos.includes(updates.Estado)) {
-        return res.status(400).json({
-          message: `Estado no válido. Debe ser: ${estadosPermitidos.join(', ')}`
-        });
-      }
-    }
-
-    // Obtener el pedido actual ANTES de actualizar
+    // Obtener el pedido actual
     const pedidoActual = await getPedidoClienteByIdModel(id);
     if (!pedidoActual) {
-      console.log('❌ [PEDIDOS] Pedido no encontrado');
       return res.status(404).json({ message: 'Pedido no encontrado.' });
     }
 
-    console.log('📦 Pedido actual:', {
-      id: pedidoActual.PedidoClienteId,
-      estado: pedidoActual.Estado,
-      total: pedidoActual.Total,
-      tipoCliente: pedidoActual.TipoCliente
-    });
+    // Si viene un archivo, construir la URL del voucher
+    if (req.file) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      const voucherUrl = `${protocol}://${host}/uploads/vouchers/${req.file.filename}`;
+      updates.Voucher = voucherUrl;
 
-    // Guardar el estado anterior para comparar
-    const estadoAnterior = pedidoActual.Estado;
-    const nuevoEstado = updates.Estado;
+      console.log('📎 Nuevo voucher URL:', voucherUrl);
+    }
 
-    // 🔥 CORRECCIÓN: Si se está actualizando el Total, sanitizarlo
+    // Si se está actualizando el estado
+    if (updates.Estado) {
+      const estadoAnterior = pedidoActual.Estado;
+      const nuevoEstado = updates.Estado;
+
+      // Validar estados según método de pago
+      if (pedidoActual.MetodoPago === "transferencia" ||
+        pedidoActual.MetodoPago === "efectivo" ||
+        pedidoActual.MetodoPago === "QR") {
+        const estadosPermitidos = ['pendiente', 'aprobado', 'finalizado', 'cancelado'];
+        if (!estadosPermitidos.includes(nuevoEstado)) {
+          return res.status(400).json({
+            message: `Para ${pedidoActual.MetodoPago}, estado debe ser: ${estadosPermitidos.join(', ')}`
+          });
+        }
+      }
+      // CONTRA ENTREGA
+      else if (pedidoActual.MetodoPago === "contra_entrega") {
+        const estadosPermitidosContraEntrega = ['pendiente', 'en_proceso', 'en_camino', 'entregado', 'cancelado'];
+        if (!estadosPermitidosContraEntrega.includes(nuevoEstado)) {
+          return res.status(400).json({
+            message: `Para contra entrega, estado debe ser: ${estadosPermitidosContraEntrega.join(', ')}`
+          });
+        }
+      }
+    }
+
+    // Sanitizar Total si viene
     if (updates.Total !== undefined) {
       const totalLimpio = parseFloat(updates.Total);
       if (!isNaN(totalLimpio)) {
         updates.Total = totalLimpio;
-        console.log('🔧 Total sanitizado:', updates.Total);
       }
     }
 
     // Actualizar el pedido
     const result = await updatePedidoClienteModel(id, updates);
-    console.log('✅ Resultado de actualización:', result);
 
     // Obtener el pedido actualizado
     const updated = await getPedidoClienteByIdModel(id);
     updated.detalle = await getDetallePedidoByPedidoIdModel(id);
 
-    console.log('📦 Pedido actualizado:', {
-      id: updated.PedidoClienteId,
-      nuevoEstado: updated.Estado,
-      total: updated.Total
-    });
-
-    // ===== ENVIAR CORREO AL CLIENTE SI EL ESTADO CAMBIÓ =====
-    if (nuevoEstado && estadoAnterior !== nuevoEstado) {
-      console.log(`📧 [EMAIL] Estado cambió de "${estadoAnterior}" a "${nuevoEstado}". Enviando correo...`);
-
+    // Si es transferencia/efectivo y se aprueba, crear venta
+    if ((pedidoActual.MetodoPago === "transferencia" || pedidoActual.MetodoPago === "efectivo") &&
+      updates.Estado === 'aprobado' && pedidoActual.Estado !== 'aprobado') {
       try {
-        // Determinar el destinatario del correo
-        destinatario = null;
-        nombreCliente = 'Cliente';
-
-        // Caso 1: Cliente registrado
-        if (updated.ClienteId) {
-          const cliente = await getClienteByIdModel(updated.ClienteId);
-          if (cliente) {
-            destinatario = cliente.CorreoElectronico;
-            nombreCliente = cliente.NombreCompleto || `${cliente.Nombre} ${cliente.Apellido}`;
-          }
-        }
-        // Caso 2: Cliente walk-in con correo
-        else if (updated.ClienteCorreo) {
-          destinatario = updated.ClienteCorreo;
-          nombreCliente = updated.ClienteNombre || 'Cliente';
-        }
-        // Caso 3: Correo en datos de entrega (si existe)
-        else if (updated.CorreoEntrega) {
-          destinatario = updated.CorreoEntrega;
-          nombreCliente = updated.NombreRecibe || 'Cliente';
-        }
-
-        console.log('📧 Destinatario:', destinatario);
-        console.log('📧 Nombre cliente:', nombreCliente);
-
-        // Enviar correo si tenemos destinatario
-        if (destinatario) {
-          // Enviar de forma asíncrona (no esperar)
-          sendPedidoEstadoEmail(
-            destinatario,
-            nombreCliente,
-            id,
-            nuevoEstado,
-            updates.motivo || '' // Para cancelación u otros estados que requieran motivo
-          ).catch(err => console.error('Error en envío de correo:', err));
-
-          console.log(`📧 Correo encolado para ${destinatario}`);
-        } else {
-          console.log('⚠️ No se pudo determinar destinatario para el correo');
-        }
-      } catch (emailError) {
-        console.error('⚠️ Error preparando envío de correo:', emailError);
-        // No interrumpimos el flujo principal si falla el correo
-      }
-    }
-
-    // ===== SI EL ESTADO ES "aprobado", CREAR VENTA =====
-    if (updated.Estado === 'aprobado') {
-      console.log('🎯 [PEDIDOS] Estado "aprobado" detectado. Intentando crear venta...');
-
-      try {
-        // ✅ Usar null para UsuarioVendedorId (se asignará después)
-        const usuarioVendedorId = null;
-        console.log('👤 UsuarioVendedorId será null (se asignará después en el módulo de ventas)');
-
-        // 🔥 DEBUG: Log del total antes de crear la venta
-        console.log('💰 [DEBUG] Total que se pasará a crear venta:', {
-          pedidoId: updated.PedidoClienteId,
-          totalPedido: updated.Total,
-          tipoTotal: typeof updated.Total,
-          detallesCount: updated.detalle?.length || 0,
-          sumaDetalles: updated.detalle?.reduce((acc, d) => acc + (Number(d.Cantidad) * Number(d.Precio)), 0)
-        });
-
-        // Verificar si ya existe una venta para este pedido
         const [ventaExistente] = await dbPool.execute(
           "SELECT VentaId FROM ventas WHERE PedidoClienteId = ?",
           [id]
         );
 
-        if (ventaExistente.length > 0) {
-          console.log('⚠️ Ya existe una venta para este pedido:', ventaExistente[0].VentaId);
+        if (ventaExistente.length === 0) {
+          const resultadoVenta = await crearVentaDesdePedidoId(id, null);
           updated.ventaCreada = {
-            id: ventaExistente[0].VentaId,
-            yaExiste: true,
-            mensaje: 'La venta ya había sido creada anteriormente'
+            id: resultadoVenta.VentaId,
+            estado: 'pagado'
           };
         } else {
-          // Llamar a la función para crear venta (con usuarioVendedorId = null)
-          console.log('🚀 Llamando a crearVentaDesdePedidoId con PedidoClienteId:', id);
-          console.log('🚀 UsuarioVendedorId:', usuarioVendedorId);
+          updated.ventaCreada = {
+            id: ventaExistente[0].VentaId,
+            yaExiste: true
+          };
+        }
+      } catch (ventaError) {
+        console.error('❌ Error al crear venta:', ventaError);
+        updated.errorVenta = ventaError.message;
+      }
+    }
 
-          const resultadoVenta = await crearVentaDesdePedidoId(id, usuarioVendedorId);
+    // Si es contra entrega y llega a 'entregado', crear venta
+    if (pedidoActual.MetodoPago === "contra_entrega" && updates.Estado === 'entregado' && pedidoActual.Estado !== 'entregado') {
+      try {
+        const [ventaExistente] = await dbPool.execute(
+          "SELECT VentaId FROM ventas WHERE PedidoClienteId = ?",
+          [id]
+        );
 
-          console.log('✅ RESULTADO DE CREACIÓN DE VENTA:', JSON.stringify(resultadoVenta, null, 2));
-
+        if (ventaExistente.length === 0) {
+          const resultadoVenta = await crearVentaDesdePedidoId(id, null);
           updated.ventaCreada = {
             id: resultadoVenta.VentaId,
             estado: 'pagado',
-            mensaje: 'Venta generada automáticamente'
+            mensaje: 'Venta generada al entregar el pedido'
           };
-
-          // También enviar factura por correo si se creó la venta
-          if (destinatario) {
-            try {
-              const { sendVentaFacturaEmail } = await import('../utils/email.js');
-              sendVentaFacturaEmail(
-                destinatario,
-                nombreCliente,
-                resultadoVenta.VentaId,
-                updated.Total,
-                updated.detalle.map(d => ({
-                  ...d,
-                  NombreSnapshot: d.ProductoId ?
-                    (productos?.find(p => p.ProductoId === d.ProductoId)?.Nombre || 'Producto') :
-                    (servicios?.find(s => s.ServicioId === d.ServicioId)?.Nombre || 'Servicio')
-                }))
-              ).catch(err => console.error('Error enviando factura:', err));
-            } catch (facturaError) {
-              console.error('Error enviando factura:', facturaError);
-            }
-          }
+          console.log(`✅ Venta creada para pedido contra entrega entregado: ${resultadoVenta.VentaId}`);
+        } else {
+          updated.ventaCreada = {
+            id: ventaExistente[0].VentaId,
+            yaExiste: true
+          };
         }
-
       } catch (ventaError) {
-        console.error('❌ [PEDIDOS] ERROR AL CREAR VENTA:');
-        console.error('❌ Mensaje:', ventaError.message);
-        console.error('❌ Stack:', ventaError.stack);
-
-        updated.errorVenta = {
-          mensaje: ventaError.message,
-          stack: ventaError.stack
-        };
+        console.error('❌ Error al crear venta para pedido entregado:', ventaError);
+        updated.errorVenta = ventaError.message;
       }
-    } else {
-      console.log('⏭️ [PEDIDOS] Estado no es "aprobado", no se crea venta');
     }
 
-    console.log('✅ [PEDIDOS] ===== ACTUALIZACIÓN COMPLETADA =====');
-    res.json({
-      ...updated,
-      correoEnviado: destinatario ? true : false,
-      mensajeCorreo: destinatario ?
-        `Notificación enviada a ${destinatario}` :
-        'No se pudo enviar notificación (cliente sin correo)'
-    });
+    // Enviar correo si cambió el estado
+    if (updates.Estado && pedidoActual.Estado !== updates.Estado) {
+      console.log('📧 [EMAIL] Preparando envío de correo...');
+      console.log('📧 Estado anterior:', pedidoActual.Estado);
+      console.log('📧 Nuevo estado:', updates.Estado);
+
+      let destinatario = null;
+      let nombreCliente = 'Cliente';
+
+      if (updated.ClienteId) {
+        const cliente = await getClienteByIdModel(updated.ClienteId);
+        if (cliente) {
+          destinatario = cliente.CorreoElectronico;
+          nombreCliente = cliente.NombreCompleto;
+          console.log('📧 Cliente encontrado:', { id: cliente.CedulaId, email: destinatario });
+        } else {
+          console.log('⚠️ Cliente no encontrado para ID:', updated.ClienteId);
+        }
+      } else if (updated.ClienteCorreo) {
+        destinatario = updated.ClienteCorreo;
+        nombreCliente = updated.ClienteNombre || 'Cliente';
+        console.log('📧 Walk-in cliente:', { email: destinatario, nombre: nombreCliente });
+      } else {
+        console.log('⚠️ No se encontró destinatario para el pedido:', id);
+      }
+
+      if (destinatario) {
+        console.log(`📧 Enviando correo para estado '${updates.Estado}' a ${destinatario}`);
+        sendPedidoEstadoEmail(
+          destinatario,
+          nombreCliente,
+          id,
+          updates.Estado,
+          updates.motivo || ''
+        ).then(() => {
+          console.log(`✅ Correo para estado '${updates.Estado}' enviado correctamente`);
+        }).catch(err => {
+          console.error(`❌ Error enviando correo para estado '${updates.Estado}':`, err);
+        });
+      } else {
+        console.log('⚠️ No se pudo enviar correo: no hay destinatario');
+      }
+    }
+
+    // Enviar email con voucher si se subió uno nuevo
+    if (req.file && updated.ClienteId) {
+      const cliente = await getClienteByIdModel(updated.ClienteId);
+      if (cliente?.CorreoElectronico) {
+        await sendVoucherEmail(
+          cliente.CorreoElectronico,
+          cliente.NombreCompleto || `${cliente.Nombre} ${cliente.Apellido}`,
+          id,
+          updates.Voucher
+        ).catch(err => console.error('Error enviando email de voucher:', err));
+      }
+    }
+
+    res.json(updated);
 
   } catch (error) {
-    console.error('❌ [PEDIDOS] ERROR GENERAL:');
-    console.error('❌ Mensaje:', error.message);
-    console.error('❌ Stack:', error.stack);
+    console.error('❌ [PEDIDOS] Error:', error);
+
+    // Si hay error y se subió un archivo, eliminarlo
+    if (req.file) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error('Error eliminando archivo:', err);
+      });
+    }
+
     res.status(500).json({
-      message: 'Error al actualizar el pedido.',
+      message: 'Error al actualizar el pedido',
       error: error.message
-    });
-  }
-};
-
-// ========================================
-// 📋 OBTENER TODOS LOS PEDIDOS
-// ========================================
-export const getPedidosClientes = async (req, res) => {
-  try {
-    console.log('🔍 [CONTROLLER] Obteniendo todos los pedidos...');
-
-    const pedidos = await getAllPedidosClientesModel();
-
-    console.log(`✅ [CONTROLLER] Pedidos obtenidos: ${pedidos.length}`);
-
-    // Manejar errores al obtener detalles individualmente
-    for (let p of pedidos) {
-      try {
-        p.detalle = await getDetallePedidoByPedidoIdModel(p.PedidoClienteId);
-        console.log(`   📋 Pedido ${p.PedidoClienteId}: ${p.detalle.length} detalles`);
-      } catch (detalleError) {
-        console.error(`   ⚠️ Error obteniendo detalles para pedido ${p.PedidoClienteId}:`, detalleError.message);
-        p.detalle = [];
-      }
-    }
-
-    res.status(200).json(pedidos);
-  } catch (error) {
-    console.error("❌ [CONTROLLER] Error al obtener pedidos:", error);
-    res.status(500).json({
-      error: "Error al obtener pedidos",
-      details: error.message,
-      sqlError: error.code
     });
   }
 };
@@ -606,15 +745,103 @@ export const getMisPedidos = async (req, res) => {
     if (!clienteId) {
       return res.status(401).json({ error: "Usuario no autenticado" });
     }
-    const pedidos = await getAllPedidosClientesModel();
-    const pedidosDelCliente = pedidos.filter(p => p.ClienteId === clienteId);
-    for (let p of pedidosDelCliente) {
+
+    const pedidos = await getAllPedidosClientesModel(clienteId);
+
+    // Agregar detalles a cada pedido
+    for (let p of pedidos) {
       p.detalle = await getDetallePedidoByPedidoIdModel(p.PedidoClienteId);
+
+      // 🔥 Determinar qué estado mostrar
+      if (p.EsVenta) {
+        // Si tiene venta y NO es contra entrega, mostrar estado de la venta
+        if (p.MetodoPago?.toLowerCase() !== 'contra_entrega') {
+          p.EstadoParaMostrar = p.EstadoVenta; // 'pagado' o 'pendiente'
+        } else {
+          // Si es contra entrega pero ya tiene venta (porque se entregó), mostrar estado de la venta
+          p.EstadoParaMostrar = p.EstadoVenta;
+        }
+      } else {
+        // Si no tiene venta, mostrar estado del pedido
+        p.EstadoParaMostrar = p.Estado;
+      }
     }
-    res.status(200).json(pedidosDelCliente);
+
+    res.status(200).json(pedidos);
   } catch (error) {
     console.error("Error al obtener mis pedidos:", error);
     res.status(500).json({ error: "Error al obtener tus pedidos" });
   }
 };
 
+// ========================================
+// 📎 SUBIR VOUCHER A PEDIDO
+// ========================================
+export const uploadVoucherToPedido = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
+    }
+
+    const pedidoExistente = await getPedidoClienteByIdModel(id);
+    if (!pedidoExistente) {
+      fs.unlink(file.path, (err) => {
+        if (err) console.error('Error eliminando archivo huérfano:', err);
+      });
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const voucherUrl = `${protocol}://${host}/uploads/vouchers/${file.filename}`;
+
+    const result = await updatePedidoClienteModel(id, { Voucher: voucherUrl });
+
+    if (result.affectedRows === 0) {
+      throw new Error('No se pudo actualizar el pedido');
+    }
+
+    const pedidoActualizado = await getPedidoClienteByIdModel(id);
+    pedidoActualizado.detalle = await getDetallePedidoByPedidoIdModel(id);
+
+    if (pedidoActualizado.ClienteId) {
+      try {
+        const cliente = await getClienteByIdModel(pedidoActualizado.ClienteId);
+        if (cliente?.CorreoElectronico) {
+          await sendVoucherEmail(
+            cliente.CorreoElectronico,
+            cliente.NombreCompleto || `${cliente.Nombre} ${cliente.Apellido}`,
+            id,
+            voucherUrl
+          );
+        }
+      } catch (emailError) {
+        console.error('⚠️ Error enviando email de voucher:', emailError);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Voucher subido correctamente',
+      voucher: voucherUrl,
+      pedido: pedidoActualizado
+    });
+
+  } catch (error) {
+    console.error('❌ Error al subir voucher:', error);
+
+    if (req.file) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error('Error eliminando archivo tras error:', err);
+      });
+    }
+
+    res.status(500).json({
+      error: 'Error al procesar el voucher',
+      message: error.message
+    });
+  }
+};

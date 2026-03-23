@@ -7,25 +7,33 @@ import {
   createPedidoCliente,
   updatePedidoCliente,
   deletePedidoCliente,
-  uploadVoucherToPedido  
+  uploadVoucherToPedido,
+  buscarPedidos  // ← NUEVO: Importar función de búsqueda
 } from "../controllers/pedidoCliente.controller.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { uploadVoucher } from "../lib/upload.js";
 
 const router = Router();
 
+// ===== RUTAS DE BÚSQUEDA (antes que las dinámicas) =====
+router.get("/buscar", buscarPedidos);  //  Ruta para búsqueda con paginación
+
 // ===== RUTAS POST Y PUT (con Multer) =====
 router.post("/", uploadVoucher.single('voucher'), createPedidoCliente);
 router.put("/:id", uploadVoucher.single('voucher'), updatePedidoCliente);
 
-// ===== NUEVA RUTA: Subir voucher a pedido existente =====
-// ⚠️ IMPORTANTE: Esta ruta debe ir ANTES de /:id para que no sea interceptada
+// ===== RUTA PARA SUBIR VOUCHER =====
 router.post("/:id/voucher", uploadVoucher.single('voucher'), uploadVoucherToPedido);
 
-// ===== RUTAS GET - ESPECÍFICAS PRIMERO, DINÁMICAS DESPUÉS =====
+// ===== RUTAS GET - ESPECÍFICAS PRIMERO =====
 router.get("/mis-pedidos", authMiddleware, getMisPedidos);
-router.get("/", getPedidosClientes);
+router.get("/", getPedidosClientes);  // Esta ruta ya maneja paginación vía query params
+
+// ===== RUTA DINÁMICA (siempre al final) =====
 router.get("/:id", getPedidoClienteById);
+
+// ===== RUTA DELETE =====
+
 router.delete("/:id", deletePedidoCliente);
 
 console.log("✅ Rutas de pedidos registradas");

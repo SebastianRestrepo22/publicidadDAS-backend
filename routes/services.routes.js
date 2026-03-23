@@ -7,7 +7,7 @@ import {
     deleteService,
     validarNombre,
     buscarService,
-    cambiarEstadoService // NUEVO
+    cambiarEstadoService
 } from '../controllers/servicios.controller.js';
 
 const router = express.Router();
@@ -15,7 +15,7 @@ const router = express.Router();
 // Validar si el nombre ya existe
 router.get('/validar-nombre', validarNombre);
 
-// Buscar servicios
+// Buscar servicios con filtros
 router.get('/buscar', buscarService);
 
 // Crear servicio
@@ -30,7 +30,7 @@ router.get('/:id', getServiceById);
 // Actualizar servicio
 router.put('/:ServicioId', updateService);
 
-// NUEVO: Cambiar estado del servicio
+// Cambiar estado del servicio
 router.patch('/:id/estado', cambiarEstadoService);
 
 // Eliminar servicio

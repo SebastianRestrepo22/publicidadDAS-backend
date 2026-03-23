@@ -4,7 +4,8 @@ import {
     getAllClients, 
     getClienteById, 
     updateCliente, 
-    deleteCliente 
+    deleteCliente,
+    buscarClientes
 } from '../controllers/clientes.controller.js';
 
 const router = express.Router();
@@ -14,6 +15,8 @@ router.post('/', createClient);
 
 // Obtener todos los clientes
 router.get('/', getAllClients);
+
+router.get('/buscar', buscarClientes);
 
 // Obtener cliente por ID
 router.get('/:id', getClienteById);

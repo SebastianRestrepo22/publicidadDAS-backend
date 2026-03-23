@@ -3,7 +3,7 @@ import { sendResetPasswordEmail } from '../utils/email.js';
 import dayjs from "dayjs"; // para manejar expiraciones
 import crypto from "crypto";
 import {
-    buscarUsuarioData, correoExiste, createByAdmin, deleteDataUser, getAllDataUsers, getUsuarioById, hashPassword, obtenerUsuarioActualizado, pedidosUsuarios, resetTokenModel, rolCliente, telefonoDataExistente, traerDatosActuales, updateDataUser, validarDataCedula, searchUsuariosModel,
+    createUsuario, buscarUsuarioData, correoExiste, createByAdmin, deleteDataUser, getAllDataUsers, getUsuarioById, hashPassword, obtenerUsuarioActualizado, pedidosUsuarios, resetTokenModel, rolCliente, telefonoDataExistente, traerDatosActuales, updateDataUser, validarDataCedula, searchUsuariosModel,
     getAllUsuariosSimpleModel,
     searchUsuariosForPedidosModel,
     getUserSystem,
@@ -12,7 +12,9 @@ import {
 } from '../models/user.model.js';
 
 // Crear usuario
+// 1
 export const createUser = async (req, res) => {
+    // 2
     const {
         CedulaId,
         TipoDocumentoId,
@@ -23,41 +25,48 @@ export const createUser = async (req, res) => {
         Contrasena,
         RoleId
     } = req.body;
-
+    //3 
     try {
+        //4
         const existente = await correoExiste(CorreoElectronico);
-
+        //5
         if (existente) {
+            //6
             return res.status(409).json({ message: 'Usuario ya existe' });
         }
-
+        //7
         if (!Contrasena) {
             // Usuario creado por admin sin contraseña → enviar link de creación
+            //8
             const resetToken = crypto.randomBytes(32).toString("hex");
+            //9
             const resetTokenExpire = dayjs().add(1, "hour").toDate();
-
-            await createByAdmin({ 
-                CedulaId, 
-                TipoDocumentoId, 
-                NombreCompleto, 
-                Telefono, 
-                CorreoElectronico, 
-                Direccion, 
-                RoleId, 
-                resetToken, 
-                resetTokenExpire 
+            //10
+            await createByAdmin({
+                CedulaId,
+                TipoDocumentoId,
+                NombreCompleto,
+                Telefono,
+                CorreoElectronico,
+                Direccion,
+                RoleId,
+                resetToken,
+                resetTokenExpire
             });
-            
-            // Enviar correo con link al frontend   
-            await sendResetPasswordEmail(CorreoElectronico, resetToken);
 
-            return res.status(201).json({ 
-                message: 'Usuario creado exitosamente. Se ha enviado un correo para establecer la contraseña.' 
+            // Enviar correo con link al frontend   
+            //11
+            await sendResetPasswordEmail(CorreoElectronico, resetToken);
+            //12
+            return res.status(201).json({
+                message: 'Usuario creado exitosamente. Se ha enviado un correo para establecer la contraseña.'
             });
         }
 
         // Si tiene contraseña (registro normal), crear usuario con contraseña
+        //13
         const hashedPassword = await bcrypt.hash(Contrasena, 10);
+        //14
         await createUsuario({
             CedulaId,
             TipoDocumentoId,
@@ -68,84 +77,94 @@ export const createUser = async (req, res) => {
             Contrasena: hashedPassword,
             RoleId
         });
-
+        //15
         res.status(201).json({ message: 'Usuario creado exitosamente' });
-
+        //16
     } catch (error) {
+        //17
         console.error('Error al crear usuario:', error);
+        //18
         res.status(500).json({ message: 'Error interno del servidor' });
     }
+    // F
 };
 
 // Listar todos los usuarios
+//1
 export const getAllUsers = async (req, res) => {
-  try {
-    const rolesCliente = await rolCliente();
-    const clienteRoleId = rolesCliente[0]?.RoleId;
+    //2
+    try {
+        //3, 4, 5. 6 , 7, 8
+        const rolesCliente = await rolCliente();
+        const clienteRoleId = rolesCliente[0]?.RoleId;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.max(1, parseInt(req.query.limit) || 10);
+        const filtroCampo = req.query.filtroCampo || null;
+        const filtroValor = req.query.filtroValor || null;
+        //9
+        const result = await getUsuariosPaginated({
+            page,
+            limit,
+            filtroCampo,
+            filtroValor,
+            excluirRoleId: clienteRoleId
+        });
 
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.max(1, parseInt(req.query.limit) || 10);
-    const filtroCampo = req.query.filtroCampo || null;
-    const filtroValor = req.query.filtroValor || null;
+        // Validación segura de datos
+        //10, 11, 12
+        const data = result && result.data && Array.isArray(result.data) ? result.data : [];
+        const totalItems = result && typeof result.totalItems === 'number' ? result.totalItems : 0;
+        const currentPage = result && typeof result.currentPage === 'number' ? result.currentPage : page;
 
-    const result = await getUsuariosPaginated({ 
-      page, 
-      limit, 
-      filtroCampo, 
-      filtroValor,
-      excluirRoleId: clienteRoleId
-    });
+        //13 Si no hay datos y la página > 1, volver a página 1
+        if (data.length === 0 && page > 1 && totalItems > 0) {
+            //14, 15, 16, 17
+            const fallback = await getUsuariosPaginated({
+                page: 1,
+                limit,
+                filtroCampo,
+                filtroValor,
+                excluirRoleId: clienteRoleId
+            });
+            const fallbackData = fallback && fallback.data && Array.isArray(fallback.data) ? fallback.data : [];
+            const fallbackTotal = fallback && typeof fallback.totalItems === 'number' ? fallback.totalItems : 0;
 
-    // Validación segura de datos
-    const data = result && result.data && Array.isArray(result.data) ? result.data : [];
-    const totalItems = result && typeof result.totalItems === 'number' ? result.totalItems : 0;
-    const currentPage = result && typeof result.currentPage === 'number' ? result.currentPage : page;
-
-    // Si no hay datos y la página > 1, volver a página 1
-    if (data.length === 0 && page > 1 && totalItems > 0) {
-      const fallback = await getUsuariosPaginated({ 
-        page: 1, 
-        limit, 
-        filtroCampo, 
-        filtroValor,
-        excluirRoleId: clienteRoleId
-      });
-      const fallbackData = fallback && fallback.data && Array.isArray(fallback.data) ? fallback.data : [];
-      const fallbackTotal = fallback && typeof fallback.totalItems === 'number' ? fallback.totalItems : 0;
-      
-      return res.status(200).json({
-        data: fallbackData,
-        pagination: {
-          totalItems: fallbackTotal,
-          totalPages: Math.ceil(fallbackTotal / limit),
-          currentPage: 1,
-          itemsPerPage: limit
+            return res.status(200).json({
+                data: fallbackData,
+                pagination: {
+                    totalItems: fallbackTotal,
+                    totalPages: Math.ceil(fallbackTotal / limit),
+                    currentPage: 1,
+                    itemsPerPage: limit
+                }
+            });
         }
-      });
+        //18
+        res.status(200).json({
+            data: data,
+            pagination: {
+                totalItems: totalItems,
+                totalPages: Math.ceil(totalItems / limit),
+                currentPage: currentPage,
+                itemsPerPage: limit
+            }
+        });
+        //19
+    } catch (error) {
+        //20
+        console.error('Error en getAllUsers:', error);
+        //21
+        res.status(200).json({
+            data: [],
+            pagination: {
+                totalItems: 0,
+                totalPages: 1,
+                currentPage: 1,
+                itemsPerPage: parseInt(req.query.limit) || 10
+            }
+        });
     }
-
-    res.status(200).json({
-      data: data,
-      pagination: {
-        totalItems: totalItems,
-        totalPages: Math.ceil(totalItems / limit),
-        currentPage: currentPage,
-        itemsPerPage: limit
-      }
-    });
-
-  } catch (error) {
-    console.error('Error en getAllUsers:', error);
-    res.status(200).json({
-      data: [],
-      pagination: {
-        totalItems: 0,
-        totalPages: 1,
-        currentPage: 1,
-        itemsPerPage: parseInt(req.query.limit) || 10
-      }
-    });
-  }
+    //Fin
 };
 
 // Obtener usuario por ID 
@@ -307,64 +326,64 @@ export const validarTelefono = async (req, res) => {
 
 // Buscar usuarios
 export const buscarUsuarios = async (req, res) => {
-  const { campo, valor, page = 1, limit = 10 } = req.query;
+    const { campo, valor, page = 1, limit = 10 } = req.query;
 
-  const columnasPermitidas = {
-    cedula: 'cedula',
-    nombre: 'nombre', 
-    correo: 'correo',
-    telefono: 'telefono',
-    direccion: 'direccion',
-    rol: 'rol',
-    tipoDocumento: 'tipoDocumento'
-  };
+    const columnasPermitidas = {
+        cedula: 'cedula',
+        nombre: 'nombre',
+        correo: 'correo',
+        telefono: 'telefono',
+        direccion: 'direccion',
+        rol: 'rol',
+        tipoDocumento: 'tipoDocumento'
+    };
 
-  const filtroCampo = columnasPermitidas[campo];
-  
-  if (campo && !filtroCampo) {
-    return res.status(400).json({ message: 'Campo de búsqueda inválido' });
-  }
+    const filtroCampo = columnasPermitidas[campo];
 
-  try {
-    const rolesCliente = await rolCliente();
-    const clienteRoleId = rolesCliente[0]?.RoleId;
+    if (campo && !filtroCampo) {
+        return res.status(400).json({ message: 'Campo de búsqueda inválido' });
+    }
 
-    const result = await getUsuariosPaginated({ 
-      page: Math.max(1, parseInt(page) || 1), 
-      limit: Math.max(1, parseInt(limit) || 10), 
-      filtroCampo: filtroCampo || null, 
-      filtroValor: valor || null,
-      excluirRoleId: clienteRoleId
-    });
+    try {
+        const rolesCliente = await rolCliente();
+        const clienteRoleId = rolesCliente[0]?.RoleId;
 
-    // Validación segura de datos
-    const data = result && result.data && Array.isArray(result.data) ? result.data : [];
-    const totalItems = result && typeof result.totalItems === 'number' ? result.totalItems : 0;
-    const currentPage = result && typeof result.currentPage === 'number' ? result.currentPage : 1;
-    const itemsPerPage = Math.max(1, parseInt(limit) || 10);
+        const result = await getUsuariosPaginated({
+            page: Math.max(1, parseInt(page) || 1),
+            limit: Math.max(1, parseInt(limit) || 10),
+            filtroCampo: filtroCampo || null,
+            filtroValor: valor || null,
+            excluirRoleId: clienteRoleId
+        });
 
-    res.status(200).json({
-      data: data,
-      pagination: {
-        totalItems: totalItems,
-        totalPages: Math.ceil(totalItems / itemsPerPage),
-        currentPage: currentPage,
-        itemsPerPage: itemsPerPage
-      }
-    });
+        // Validación segura de datos
+        const data = result && result.data && Array.isArray(result.data) ? result.data : [];
+        const totalItems = result && typeof result.totalItems === 'number' ? result.totalItems : 0;
+        const currentPage = result && typeof result.currentPage === 'number' ? result.currentPage : 1;
+        const itemsPerPage = Math.max(1, parseInt(limit) || 10);
 
-  } catch (error) {
-    console.error('Error en buscarUsuarios:', error);
-    res.status(200).json({
-      data: [],
-      pagination: {
-        totalItems: 0,
-        totalPages: 1,
-        currentPage: 1,
-        itemsPerPage: parseInt(limit) || 10
-      }
-    });
-  }
+        res.status(200).json({
+            data: data,
+            pagination: {
+                totalItems: totalItems,
+                totalPages: Math.ceil(totalItems / itemsPerPage),
+                currentPage: currentPage,
+                itemsPerPage: itemsPerPage
+            }
+        });
+
+    } catch (error) {
+        console.error('Error en buscarUsuarios:', error);
+        res.status(200).json({
+            data: [],
+            pagination: {
+                totalItems: 0,
+                totalPages: 1,
+                currentPage: 1,
+                itemsPerPage: parseInt(limit) || 10
+            }
+        });
+    }
 };
 
 export const resetPassword = async (req, res) => {

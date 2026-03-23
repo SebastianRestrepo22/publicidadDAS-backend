@@ -2,14 +2,21 @@ import { Router } from "express";
 import {
     getDetallesByPedido,
     createDetalle,  
-    deleteDetalle
+    deleteDetalle,
+    updateDetalle,
+    deleteDetallesByPedido
 } from "../controllers/detallePedidoCliente.controller.js";
 
 const router = Router();
 
+// Rutas específicas primero
 router.get("/:id", getDetallesByPedido);
-router.post("/", createDetalle);
-router.delete("/:id", deleteDetalle);
-  
+router.delete("/pedido/:pedidoId", deleteDetallesByPedido);  // ← AHORA SÍ EXPORTADA
 
+// Rutas CRUD
+router.post("/", createDetalle);
+router.put("/:id", updateDetalle);
+router.delete("/:id", deleteDetalle);
+
+console.log("✅ Rutas de detalles de pedidos registradas");
 export default router;

@@ -8,8 +8,10 @@ import {
   getDataAllProductos,
   getDataProductoById,
   nombreProductoExiste,
-  updateDataProducto
+  updateDataProducto,
+  getProductosPaginated
 } from '../models/producto.model.js';
+import { actualizarStockProducto } from '../models/detalleCompras.model.js';
 
 // Crear producto - Ahora incluye UsaColores y Stock
 export const postProducto = async (req, res) => {
@@ -21,8 +23,7 @@ export const postProducto = async (req, res) => {
     Descuento,
     CategoriaId,
     Estado,
-    UsaColores = 0,
-    Stock = null
+    UsaColores = 0,  // 🔥 ÚNICO indicador: ¿el producto PUEDE tener colores?
   } = req.body;
 
   try {
@@ -33,23 +34,9 @@ export const postProducto = async (req, res) => {
       })
     }
 
-    // Validar UsaColores
+    // Validar UsaColores (solo 0 o 1)
     if (UsaColores !== 0 && UsaColores !== 1) {
       return res.status(400).json({ message: 'UsaColores debe ser 0 o 1' });
-    }
-
-    // Si no usa colores, Stock es obligatorio
-    if (UsaColores === 0 && (Stock === null || Stock === undefined || Stock < 0)) {
-      return res.status(400).json({
-        message: 'Para productos sin colores, el stock es obligatorio y debe ser mayor o igual a 0'
-      });
-    }
-
-    // Si usa colores, Stock debe ser null
-    if (UsaColores === 1 && Stock !== null) {
-      return res.status(400).json({
-        message: 'Para productos con colores, el stock debe ser null (se maneja por color)'
-      });
     }
 
     const existente = await nombreProductoExiste(Nombre);
@@ -60,6 +47,7 @@ export const postProducto = async (req, res) => {
 
     const ProductoId = uuidv4();
 
+    // 🔥 SOLO guardar información básica, NO colores
     await createProducto({
       ProductoId,
       Nombre,
@@ -70,14 +58,14 @@ export const postProducto = async (req, res) => {
       CategoriaId,
       Estado,
       UsaColores,
-      Stock
+      Stock: 0
     });
 
     res.status(201).json({
       message: 'Producto creado exitosamente',
       ProductoId,
       UsaColores,
-      Stock
+      Stock: 0
     });
   } catch (error) {
     console.error('Error al crear producto:', error);
@@ -86,7 +74,6 @@ export const postProducto = async (req, res) => {
 };
 
 // Cambiar estado del producto
-// Cambiar estado del producto - PRESERVANDO EL STOCK
 export const cambiarEstadoProducto = async (req, res) => {
   const { id } = req.params;
   const { Estado } = req.body;
@@ -98,44 +85,19 @@ export const cambiarEstadoProducto = async (req, res) => {
       });
     }
 
-    // PRIMERO: Obtener el producto actual para preservar su stock
-    const productoActual = await getDataProductoById(id);
-
-    if (productoActual.length === 0) {
-      return res.status(404).json({ message: 'Producto no encontrado' });
-    }
-
-    const producto = productoActual[0];
-
-    // Preparar datos para actualizar, incluyendo el stock actual
-    const datosActualizacion = {
+    // Solo actualizar el estado, el stock no se toca
+    const result = await updateDataProducto({
       ProductoId: id,
       Estado
-    };
-
-    // PRESERVAR EL STOCK: solo si el producto no usa colores
-    if (producto.UsaColores === 0) {
-      datosActualizacion.Stock = producto.Stock;
-    }
-
-    // También preservar UsaColores para evitar que se pierda
-    datosActualizacion.UsaColores = producto.UsaColores;
-
-    // Actualizar con todos los datos necesarios
-    const result = await updateDataProducto(datosActualizacion);
+      // ❌ No incluir Stock ni UsaColores
+    });
 
     if (result === 0) {
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
     res.status(200).json({
-      message: `Producto ${Estado === 'Activo' ? 'activado' : 'desactivado'} correctamente`,
-      producto: {
-        ProductoId: id,
-        Estado,
-        Stock: producto.Stock,
-        UsaColores: producto.UsaColores
-      }
+      message: `Producto ${Estado === 'Activo' ? 'activado' : 'desactivado'} correctamente`
     });
   } catch (error) {
     console.error('Error al cambiar estado:', error);
@@ -143,61 +105,133 @@ export const cambiarEstadoProducto = async (req, res) => {
   }
 };
 
-// Obtener todos los productos - Adaptada para nuevo esquema
+// Obtener todos los productos 
 export const getAllProducto = async (req, res) => {
   try {
-    const { estado } = req.query;
-    const soloActivos = estado === 'Activo';
-    
-    const rows = await getDataAllProductos(soloActivos);
+    const { estado, page = 1, limit = 10, filtroCampo, filtroValor } = req.query;
 
-    const productosMap = {};
+    // Validar y convertir parámetros
+    const currentPage = Math.max(1, parseInt(page) || 1);
+    const itemsPerPage = Math.max(1, parseInt(limit) || 10);
 
-    for (const row of rows) {
-      if (!productosMap[row.ProductoId]) {
-        productosMap[row.ProductoId] = {
-          ProductoId: row.ProductoId,
-          Nombre: row.Nombre,
-          Descripcion: row.Descripcion,
-          Imagen: row.Imagen,
-          Precio: row.Precio,
-          Descuento: row.Descuento,
-          CategoriaId: row.CategoriaId,
-          UsaColores: parseInt(row.UsaColores),  // ← FORZAR CONVERSIÓN A NÚMERO
-          Estado: row.Estado || 'Activo',
-          Stock: row.UsaColores === 0 ? row.StockGeneral : null,
-          Colores: []
-        };
-      }
+    const result = await getProductosPaginated({
+      page: currentPage,
+      limit: itemsPerPage,
+      filtroCampo: filtroCampo || null,
+      filtroValor: filtroValor || null,
+      estado: estado || null
+    });
 
-      if (row.ColorId) {
-        productosMap[row.ProductoId].Colores.push({
-          ColorId: row.ColorId,
-          Nombre: row.ColorNombre,
-          Hex: row.Hex,
-          Stock: row.StockColor || 0
-        });
-      }
+    // Validación defensiva
+    const data = result && result.data && Array.isArray(result.data) ? result.data : [];
+    const totalItems = result?.totalItems || 0;
+    const totalPages = result?.totalPages || Math.ceil(totalItems / itemsPerPage) || 1;
+
+    // Si no hay datos y la página > 1, volver a página 1
+    if (data.length === 0 && currentPage > 1 && totalItems > 0) {
+      const fallback = await getProductosPaginated({
+        page: 1,
+        limit: itemsPerPage,
+        filtroCampo: filtroCampo || null,
+        filtroValor: filtroValor || null,
+        estado: estado || null
+      });
+      
+      const fallbackData = fallback && fallback.data && Array.isArray(fallback.data) ? fallback.data : [];
+      const fallbackTotal = fallback?.totalItems || 0;
+      const fallbackPages = fallback?.totalPages || Math.ceil(fallbackTotal / itemsPerPage) || 1;
+      
+      return res.status(200).json({
+        data: fallbackData,
+        pagination: {
+          totalItems: fallbackTotal,
+          totalPages: fallbackPages,
+          currentPage: 1,
+          itemsPerPage: itemsPerPage
+        }
+      });
     }
 
-    res.status(200).json(Object.values(productosMap));
+    res.status(200).json({
+      data: data,
+      pagination: {
+        totalItems: totalItems,
+        totalPages: totalPages,
+        currentPage: currentPage,
+        itemsPerPage: itemsPerPage
+      }
+    });
+
   } catch (error) {
-    console.error("Error al obtener productos:", error);
-    res.status(500).json({ message: "Error interno del servidor" });
+    console.error('Error en getAllProducto:', error);
+    res.status(200).json({
+      data: [],
+      pagination: {
+        totalItems: 0,
+        totalPages: 1,
+        currentPage: 1,
+        itemsPerPage: parseInt(req.query.limit) || 10
+      }
+    });
   }
 };
 
 // Obtener producto por ID
+// controllers/productos.controller.js
 export const getProductoById = async (req, res) => {
   const { id } = req.params;
   try {
-    const productos = await getDataProductoById(id);
+    const [productoRows] = await dbPool.query(
+      `SELECT * FROM productos WHERE ProductoId = ?`,
+      [id]
+    );
 
-    if (productos.length === 0) {
+    if (productoRows.length === 0) {
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
-    res.status(200).json(productos[0]);
+    const producto = productoRows[0];
+
+    // 🔥 Obtener colores desde compras para este producto
+    const [coloresDesdeCompras] = await dbPool.query(`
+      SELECT DISTINCT
+        c.ColorId,
+        c.Nombre,
+        c.Hex,
+        COALESCE(pcs.Stock, 0) AS Stock
+      FROM detallecompras dc
+      INNER JOIN colores c ON c.ColorId = dc.ColorId
+      LEFT JOIN productocolores_stock pcs ON pcs.ProductoId = dc.ProductoId AND pcs.ColorId = dc.ColorId
+      WHERE dc.ProductoId = ? AND dc.ColorId IS NOT NULL
+    `, [id]);
+
+    // 🔥 También obtener colores con stock (de compras anteriores)
+    const [coloresConStock] = await dbPool.query(`
+      SELECT 
+        c.ColorId,
+        c.Nombre,
+        c.Hex,
+        pcs.Stock
+      FROM productocolores_stock pcs
+      INNER JOIN colores c ON c.ColorId = pcs.ColorId
+      WHERE pcs.ProductoId = ? AND pcs.Stock > 0
+    `, [id]);
+
+    // Combinar colores únicos (usar Map para evitar duplicados)
+    const coloresMap = new Map();
+    
+    [...coloresDesdeCompras, ...coloresConStock].forEach(color => {
+      if (!coloresMap.has(color.ColorId) || coloresMap.get(color.ColorId).Stock < color.Stock) {
+        coloresMap.set(color.ColorId, color);
+      }
+    });
+
+    const coloresUnicos = Array.from(coloresMap.values());
+
+    res.status(200).json({
+      ...producto,
+      Colores: coloresUnicos
+    });
   } catch (error) {
     console.error('Error al obtener producto:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -214,70 +248,49 @@ export const updateProducto = async (req, res) => {
     Precio,
     Descuento,
     CategoriaId,
-    UsaColores = 0,
-    Stock = null
+    UsaColores = 0,  
   } = req.body;
 
-  console.log('========================================');
-  console.log('📥 BACKEND - updateProducto:');
-  console.log('ID:', id);
-  console.log('UsaColores recibido:', UsaColores, 'Tipo:', typeof UsaColores);
-  console.log('Stock recibido:', Stock, 'Tipo:', typeof Stock);
-  console.log('Body completo:', req.body);
-  console.log('========================================');
-
   try {
+    const usaColoresNum = parseInt(UsaColores) || 0;
 
-    // Al inicio de updateProducto
-const UsaColores = parseInt(req.body.UsaColores) || 0;
-const Stock = req.body.Stock !== null && req.body.Stock !== undefined 
-  ? parseInt(req.body.Stock) 
-  : null;
-
-console.log('UsaColores convertido:', UsaColores, 'Tipo:', typeof UsaColores);
     if (!Nombre) {
-      return res.status(400).json({
-        message: 'El nombre es obligatorio'
-      });
+      return res.status(400).json({ message: 'El nombre es obligatorio' });
     }
 
-    // Validar UsaColores
-    if (UsaColores !== 0 && UsaColores !== 1) {
+    if (usaColoresNum !== 0 && usaColoresNum !== 1) {
       return res.status(400).json({ message: 'UsaColores debe ser 0 o 1' });
     }
 
-    // Si no usa colores, Stock debe ser un número >= 0
-    if (UsaColores === 0) {
-      if (Stock === null || Stock === undefined) {
-        return res.status(400).json({
-          message: 'Para productos sin colores, el stock es obligatorio'
-        });
-      }
-
-      const stockNumber = Number(Stock);
-      if (isNaN(stockNumber) || stockNumber < 0) {
-        return res.status(400).json({
-          message: 'El stock debe ser un número mayor o igual a 0'
-        });
-      }
+    // Obtener producto actual
+    const productoActual = await getDataProductoById(id);
+    if (productoActual.length === 0) {
+      return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
-    // Si usa colores, Stock debe ser null o undefined
-    if (UsaColores === 1) {
-      if (Stock !== null && Stock !== undefined) {
-        return res.status(400).json({
-          message: 'Para productos con colores, el stock debe ser null (se maneja por color)'
-        });
-      }
+    const producto = productoActual[0];
+
+    // 🔥 Verificar si ya tiene colores en compras
+    const [coloresEnCompras] = await dbPool.query(
+      `SELECT DISTINCT ColorId FROM detallecompras 
+       WHERE ProductoId = ? AND ColorId IS NOT NULL`,
+      [id]
+    );
+
+    // Si ya tiene colores registrados por compras, no permitir cambiar UsaColores a false
+    if (coloresEnCompras.length > 0 && usaColoresNum === 0) {
+      return res.status(400).json({
+        message: 'No puedes desactivar colores porque ya hay compras con colores para este producto'
+      });
     }
 
+    // Verificar duplicados de nombre
     const duplicates = await findDuplicateName({ ProductoId: id, Nombre });
     if (duplicates.length > 0) {
-      return res.status(409).json({
-        message: 'El nombre ya existe.'
-      });
-    };
+      return res.status(409).json({ message: 'El nombre ya existe.' });
+    }
 
+    // Actualizar SOLO datos básicos, NO colores ni stock
     const result = await updateDataProducto({
       ProductoId: id,
       Nombre,
@@ -286,8 +299,8 @@ console.log('UsaColores convertido:', UsaColores, 'Tipo:', typeof UsaColores);
       Precio,
       Descuento,
       CategoriaId,
-      UsaColores,
-      Stock
+      UsaColores: usaColoresNum,
+      // NO incluir colores ni stock
     });
 
     if (result === 0) {
@@ -299,8 +312,8 @@ console.log('UsaColores convertido:', UsaColores, 'Tipo:', typeof UsaColores);
       producto: {
         ProductoId: id,
         Nombre,
-        UsaColores,
-        Stock
+        UsaColores: usaColoresNum,
+        Stock: producto.Stock
       }
     });
   } catch (error) {
@@ -319,7 +332,7 @@ export const deleteProducto = async (req, res) => {
 
     // Verificar si el producto existe
     const [producto] = await connection.query(
-      `SELECT * FROM Productos WHERE ProductoId = ?`,
+      `SELECT * FROM productos WHERE ProductoId = ?`,
       [id]
     );
 
@@ -348,18 +361,18 @@ export const deleteProducto = async (req, res) => {
 
     // ELIMINAR PRIMERO LAS RELACIONES CON COLORES
     await connection.query(
-      `DELETE FROM ProductoColores_Stock WHERE ProductoId = ?`,
+      `DELETE FROM productocolores_stock WHERE ProductoId = ?`,
       [id]
     );
 
     await connection.query(
-      `DELETE FROM ProductoColores WHERE ProductoId = ?`,
+      `DELETE FROM productocolores WHERE ProductoId = ?`,
       [id]
     );
 
     // Luego eliminar el producto
     await connection.query(
-      `DELETE FROM Productos WHERE ProductoId = ?`,
+      `DELETE FROM productos WHERE ProductoId = ?`,
       [id]
     );
 
@@ -385,7 +398,7 @@ export const updateEstadoProducto = async (ProductoId, Estado) => {
 
   // Primero obtener el producto actual para preservar sus datos
   const [producto] = await dbPool.query(
-    `SELECT * FROM Productos WHERE ProductoId = ?`,
+    `SELECT * FROM productos WHERE ProductoId = ?`,
     [ProductoId]
   );
 
@@ -395,7 +408,7 @@ export const updateEstadoProducto = async (ProductoId, Estado) => {
 
   // Actualizar estado manteniendo otros campos
   const [rows] = await dbPool.query(
-    `UPDATE Productos SET Estado = ?, Stock = ?, UsaColores = ? WHERE ProductoId = ?`,
+    `UPDATE productos SET Estado = ?, Stock = ?, UsaColores = ? WHERE ProductoId = ?`,
     [Estado, producto[0].Stock, producto[0].UsaColores, ProductoId]
   );
 
@@ -417,57 +430,58 @@ export const validarNombre = async (req, res) => {
 
 // Buscar productos - Actualizada para incluir nuevos campos
 export const buscarProducto = async (req, res) => {
-  const { campo, valor } = req.query;
+  const { campo, valor, page = 1, limit = 10, estado } = req.query;
 
   const columnasPermitidas = {
-    nombre: 'Nombre',
-    descripcion: 'Descripcion',
-    precio: 'Precio',
-    descuento: 'Descuento',
-    categoria: 'CategoriaId',
-    usacolores: 'UsaColores',
-    stock: 'Stock'
+    nombre: 'nombre',
+    descripcion: 'descripcion',
+    precio: 'precio',
+    descuento: 'descuento',
+    categoria: 'categoria',
+    stock: 'stock',
+    usacolores: 'usacolores'
   };
 
-  const columna = columnasPermitidas[campo?.toLowerCase()];
-  if (!columna) {
+  const filtroCampo = columnasPermitidas[campo?.toLowerCase()];
+  
+  if (campo && !filtroCampo) {
     return res.status(400).json({ message: 'Campo de búsqueda inválido' });
   }
 
-  if (valor === undefined || valor === '') {
-    return res.status(400).json({ message: 'Valor de búsqueda requerido' });
-  }
-
   try {
-    const camposExactos = ['Precio', 'Descuento', 'CategoriaId', 'UsaColores', 'Stock'];
-    const operador = camposExactos.includes(columna) ? '=' : 'LIKE';
-
-    let valorFinal = valor;
-
-    if (['Precio', 'Descuento', 'UsaColores', 'Stock'].includes(columna)) {
-      valorFinal = Number(valor);
-      if (Number.isNaN(valorFinal)) {
-        return res.status(400).json({ message: `${columna} debe ser un número válido` });
-      }
-    }
-
-    if (columna === 'CategoriaId') {
-      if (!valor || typeof valor !== 'string') {
-        return res.status(400).json({ message: 'CategoriaId inválido' });
-      }
-    }
-
-    const parametro = operador === '=' ? valorFinal : `%${valor}%`;
-
-    const productos = await buscarProductoDB({
-      columna,
-      operador,
-      parametro
+    const result = await getProductosPaginated({
+      page: Math.max(1, parseInt(page) || 1),
+      limit: Math.max(1, parseInt(limit) || 10),
+      filtroCampo: filtroCampo || null,
+      filtroValor: valor || null,
+      estado: estado || null
     });
 
-    res.status(200).json({ results: productos });
+    const data = result && result.data && Array.isArray(result.data) ? result.data : [];
+    const totalItems = typeof result?.totalItems === 'number' ? result.totalItems : 0;
+    const currentPage = typeof result?.currentPage === 'number' ? result.currentPage : 1;
+    const itemsPerPage = Math.max(1, parseInt(limit) || 10);
+
+    res.status(200).json({
+      data: data,
+      pagination: {
+        totalItems: totalItems,
+        totalPages: Math.ceil(totalItems / itemsPerPage),
+        currentPage: currentPage,
+        itemsPerPage: itemsPerPage
+      }
+    });
+
   } catch (error) {
-    console.error('Error al buscar productos:', error);
-    res.status(500).json({ message: 'Error interno del servidor' });
+    console.error('Error en buscarProducto:', error);
+    res.status(200).json({
+      data: [],
+      pagination: {
+        totalItems: 0,
+        totalPages: 1,
+        currentPage: 1,
+        itemsPerPage: parseInt(limit) || 10
+      }
+    });
   }
 };

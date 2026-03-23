@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { dbPool } from "../lib/db.js";
 
-// Obtener detalles por venta
 export const getDetalleVentaByVentaIdModel = async (ventaId) => {
   try {
     const [rows] = await dbPool.query(
@@ -9,13 +8,11 @@ export const getDetalleVentaByVentaIdModel = async (ventaId) => {
         dv.*,
         p.Nombre AS ProductoNombre,
         s.Nombre AS ServicioNombre,
-        st.NombreTamano,
         c.Nombre AS ColorNombre,
         c.Hex AS ColorHex
       FROM detalleventas dv
       LEFT JOIN productos p ON dv.ProductoId = p.ProductoId
       LEFT JOIN servicios s ON dv.ServicioId = s.ServicioId
-      LEFT JOIN servicio_tamanos st ON dv.ServicioTamanoId = st.ServicioTamanoId
       LEFT JOIN colores c ON dv.ColorId = c.ColorId
       WHERE dv.VentaId = ?`,
       [ventaId]
@@ -27,91 +24,66 @@ export const getDetalleVentaByVentaIdModel = async (ventaId) => {
   }
 };
 
-// Crear detalle de venta desde pedido
 export const createDetallesVentaFromPedidoModel = async (connection, VentaId, detallesPedido) => {
   try {
-    const detallesCreados = [];
-    
+    console.log(`📝 Creando ${detallesPedido.length} detalles para venta ${VentaId}`);
+
     for (const detalle of detallesPedido) {
       const DetalleVentaId = uuidv4();
       
-      let tipoItem = null;
-      let productoId = null;
-      let servicioId = null;
-      let servicioTamanoId = null;
-      let nombreSnapshot = "";
-      let descripcionPersonalizada = detalle.Descripcion || null;
-      let urlImagenPersonalizada = detalle.UrlImagen || null;
-      
+      // Determinar el tipo de item y nombre snapshot
+      let tipoItem = detalle.ProductoId ? 'producto' : 'servicio';
+      let nombreSnapshot = '';
+
+      // Obtener nombres si es necesario
       if (detalle.ProductoId) {
-        tipoItem = 'producto';
-        productoId = detalle.ProductoId;
-        
-        const [productoRows] = await connection.query(
+        const [producto] = await connection.query(
           "SELECT Nombre FROM productos WHERE ProductoId = ?",
           [detalle.ProductoId]
         );
-        nombreSnapshot = productoRows.length > 0 ? productoRows[0].Nombre : "Producto";
-        
+        nombreSnapshot = producto[0]?.Nombre || 'Producto';
       } else if (detalle.ServicioId) {
-        tipoItem = 'servicio';
-        servicioId = detalle.ServicioId;
-        
-        const [servicioRows] = await connection.query(
+        const [servicio] = await connection.query(
           "SELECT Nombre FROM servicios WHERE ServicioId = ?",
           [detalle.ServicioId]
         );
-        nombreSnapshot = servicioRows.length > 0 ? servicioRows[0].Nombre : "Servicio";
-        
-        if (detalle.Tamaño) {
-          const [tamanoRows] = await connection.query(
-            "SELECT ServicioTamanoId FROM servicio_tamanos WHERE ServicioId = ? AND NombreTamano = ?",
-            [detalle.ServicioId, detalle.Tamaño]
-          );
-          if (tamanoRows.length > 0) {
-            servicioTamanoId = tamanoRows[0].ServicioTamanoId;
-          }
-        }
+        nombreSnapshot = servicio[0]?.Nombre || 'Servicio';
       }
-      
-      const subtotal = detalle.Cantidad * detalle.Precio;
-      
+
+      // Calcular subtotal
+      const subtotalDetalle = (detalle.Cantidad || 0) * (detalle.Precio || 0);
+
+      console.log(`   - Detalle: ${nombreSnapshot}, Cantidad: ${detalle.Cantidad}, Precio: ${detalle.Precio}`);
+
       await connection.query(
         `INSERT INTO detalleventas (
           DetalleVentaId, VentaId, TipoItem, ProductoId, ServicioId,
-          ServicioTamanoId, NombreSnapshot, Cantidad, PrecioUnitario,
-          Descuento, Subtotal, ColorId, DescripcionPersonalizada, UrlImagenPersonalizada
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          NombreSnapshot, Cantidad, PrecioUnitario, Subtotal, ColorId, DescripcionPersonalizada
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           DetalleVentaId,
           VentaId,
           tipoItem,
-          productoId,
-          servicioId,
-          servicioTamanoId,
+          detalle.ProductoId || null,
+          detalle.ServicioId || null,
           nombreSnapshot,
-          detalle.Cantidad,
-          detalle.Precio,
-          detalle.Descuento || 0,
-          subtotal,
+          detalle.Cantidad || 1,
+          detalle.Precio || 0,
+          subtotalDetalle,
           detalle.ColorId || null,
-          descripcionPersonalizada,
-          urlImagenPersonalizada
+          detalle.Descripcion || null
         ]
       );
-      
-      detallesCreados.push(DetalleVentaId);
     }
     
-    return detallesCreados;
-    
+    console.log(`✅ ${detallesPedido.length} detalles creados para venta ${VentaId}`);
+    return true;
   } catch (error) {
     console.error("Error en createDetallesVentaFromPedidoModel:", error);
     throw error;
   }
 };
 
-// Crear detalle de venta manual
 export const createDetalleVentaManualModel = async (connection, detalleData) => {
   try {
     const DetalleVentaId = uuidv4();
@@ -120,38 +92,35 @@ export const createDetalleVentaManualModel = async (connection, detalleData) => 
       TipoItem,
       ProductoId,
       ServicioId,
-      ServicioTamanoId,
       NombreSnapshot,
       Cantidad,
       PrecioUnitario,
       Descuento = 0,
       Subtotal,
       ColorId,
-      DescripcionPersonalizada,
-      UrlImagenPersonalizada
+      DescripcionPersonalizada
     } = detalleData;
     
+    // ¡CORREGIDO! Ahora hay 12 parámetros para 12 columnas
     await connection.query(
       `INSERT INTO detalleventas (
         DetalleVentaId, VentaId, TipoItem, ProductoId, ServicioId,
-        ServicioTamanoId, NombreSnapshot, Cantidad, PrecioUnitario,
-        Descuento, Subtotal, ColorId, DescripcionPersonalizada, UrlImagenPersonalizada
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        NombreSnapshot, Cantidad, PrecioUnitario,
+        Descuento, Subtotal, ColorId, DescripcionPersonalizada
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         DetalleVentaId,
         VentaId,
         TipoItem,
         ProductoId || null,
         ServicioId || null,
-        ServicioTamanoId || null,
         NombreSnapshot,
         Cantidad,
         PrecioUnitario,
         Descuento,
         Subtotal,
         ColorId || null,
-        DescripcionPersonalizada || null,
-        UrlImagenPersonalizada || null
+        DescripcionPersonalizada || null  // ← Este es el parámetro que faltaba
       ]
     );
     
@@ -163,7 +132,6 @@ export const createDetalleVentaManualModel = async (connection, detalleData) => 
   }
 };
 
-// Eliminar detalles de venta (solo usado al anular)
 export const deleteDetallesByVentaIdModel = async (connection, ventaId) => {
   try {
     const [result] = await connection.query(

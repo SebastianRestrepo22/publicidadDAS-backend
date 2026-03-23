@@ -2,7 +2,7 @@ import { dbPool } from '../lib/db.js';
 
 export const getAllColoresDB = async () => {
   const [rows] = await dbPool.query(
-    "SELECT ColorId, Nombre, Hex FROM Colores ORDER BY Nombre"
+    "SELECT ColorId, Nombre, Hex FROM colores ORDER BY Nombre"
   );
   return rows;
 };
@@ -15,7 +15,7 @@ export const getColoresByProductoId = async (ProductoId) => {
       c.Hex,
       COALESCE(pcs.Stock, 0) AS Stock
     FROM ProductoColores pc
-    JOIN Colores c ON c.ColorId = pc.ColorId
+    JOIN colores c ON c.ColorId = pc.ColorId
     LEFT JOIN ProductoColores_Stock pcs ON pcs.ProductoId = pc.ProductoId AND pcs.ColorId = pc.ColorId
     WHERE pc.ProductoId = ?
     ORDER BY c.Nombre

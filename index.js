@@ -18,7 +18,6 @@ import servicioRouter from './routes/services.routes.js';
 import voucherRoutes from './routes/voucher.routes.js';
 import colorRoutes from "./routes/color.routes.js";
 import clientRouter from './routes/cliente.routes.js';
-import servicioTamanosRoutes from './routes/servicioTamanos.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 import uploadTempRoutes from './routes/uploadTemporal.js';
 
@@ -31,15 +30,19 @@ import tipoDocumentoRoutes from './routes/tipoDocumento.js';
 // Scripts
 import { initRolesAndAdmin } from './scripts/initRolesAndAdmin.js';
 import { dbPool } from './lib/db.js';
-import { iniciarAutoCancelacionCompras } from './scripts/autoCancelCompras.js';
 
 dotenv.config();
 
 const app = express();
 
-iniciarAutoCancelacionCompras();
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "http://localhost:5173" // Vite default
+];
 
-app.use(cors());
+app.use(cors({
+  origin: allowedOrigins
+}));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -57,7 +60,6 @@ app.use('/user', userRouter);
 app.use('/client', clientRouter);
 app.use('/producto', productoRouter);
 app.use('/servicio', servicioRouter);
-app.use('/api/servicio', servicioTamanosRoutes);
 app.use("/colores", colorRoutes);
 app.use('/tipos-documento', tipoDocumentoRoutes);
 app.use('/api', uploadTempRoutes);
@@ -96,3 +98,4 @@ const startServer = async () => {
 };
 
 startServer();
+
