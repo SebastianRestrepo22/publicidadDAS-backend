@@ -23,7 +23,7 @@ export const postProducto = async (req, res) => {
     Descuento,
     CategoriaId,
     Estado,
-    UsaColores = 0,  // 🔥 ÚNICO indicador: ¿el producto PUEDE tener colores?
+    UsaColores = 0,  // ÚNICO indicador: ¿el producto PUEDE tener colores?
   } = req.body;
 
   try {
@@ -47,7 +47,7 @@ export const postProducto = async (req, res) => {
 
     const ProductoId = uuidv4();
 
-    // 🔥 SOLO guardar información básica, NO colores
+    //  guardar información básica, NO colores
     await createProducto({
       ProductoId,
       Nombre,
@@ -191,7 +191,7 @@ export const getProductoById = async (req, res) => {
 
     const producto = productoRows[0];
 
-    // 🔥 SIMPLIFICADO: Solo obtener colores con stock de productocolores_stock
+    // Solo obtener colores con stock de productocolores_stock
     const [coloresConStock] = await dbPool.query(`
       SELECT 
         c.ColorId,
@@ -202,11 +202,6 @@ export const getProductoById = async (req, res) => {
       INNER JOIN colores c ON c.ColorId = pcs.ColorId
       WHERE pcs.ProductoId = ?
     `, [id]);
-
-    // Si el producto usa colores pero no tiene stock, aún así devolvemos los colores con stock 0
-    // Pero necesitamos saber qué colores están asignados al producto
-    // Para eso necesitas una tabla de relación (producto_colores)
-    // Si no tienes esa tabla, no podrás saber qué colores están asignados sin stock
 
     res.status(200).json({
       ...producto,
@@ -250,7 +245,7 @@ export const updateProducto = async (req, res) => {
 
     const producto = productoActual[0];
 
-    // 🔥 Verificar si ya tiene colores en compras
+    // Verificar si ya tiene colores en compras
     const [coloresEnCompras] = await dbPool.query(
       `SELECT DISTINCT ColorId FROM detallecompras 
        WHERE ProductoId = ? AND ColorId IS NOT NULL`,

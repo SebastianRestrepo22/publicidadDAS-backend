@@ -309,7 +309,8 @@ export const anularVenta = async (req, res) => {
     }
 
     if (venta.Origen === 'manual') {
-      const fechaVenta = new Date(venta.FechaVenta);
+      const safeFecha = typeof venta.FechaVenta === 'string' ? venta.FechaVenta.replace(' ', 'T') : venta.FechaVenta;
+      const fechaVenta = new Date(safeFecha);
       const ahora = new Date();
       const diferenciaMs = ahora - fechaVenta;
       const diferenciaHoras = diferenciaMs / (1000 * 60 * 60);
