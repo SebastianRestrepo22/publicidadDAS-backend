@@ -1,20 +1,17 @@
-// backend/utils/email.js
 import nodemailer from "nodemailer";
 
 // CONFIGURACIÓN ÚNICA Y ESTABLE PARA GMAIL (PUERTO 465)
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
-  secure: true, // true para puerto 465
+  secure: true,
   auth: {
-    user: process.env.EMAIL_USER,  // tuemail@gmail.com
-    pass: process.env.EMAIL_PASS,  // ¡CONTRASEÑA DE APLICACIÓN DE 16 DÍGITOS!
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
-  pool: true,      //  Reutiliza conexiones (evita "socket close")
+  pool: true,
   maxConnections: 5,
-  rateLimit: true, //  Evita bloqueos por exceso de envíos
-  rateDelta: 1000,
-  rateLimit: 10,
+  maxMessages: 100,
 });
 
 //  Verificar conexión al iniciar la app (opcional pero recomendado)
@@ -164,14 +161,14 @@ Si no solicitaste crear una cuenta, puedes ignorar este mensaje con seguridad.
 
 //  NOTIFICAR CAMBIO DE ESTADO DE PEDIDO (ACTUALIZADO CON ESTADOS DE CONTRA ENTREGA)
 export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEstado, motivo = "") => {
-  
+
   if (nuevoEstado) {
     console.log("🚨 Caracteres uno por uno:");
     for (let i = 0; i < nuevoEstado.length; i++) {
       console.log(`  [${i}]: '${nuevoEstado[i]}' (código: ${nuevoEstado.charCodeAt(i)})`);
     }
   }
-  
+
   let subject = "";
   let html = "";
   let icono = "";
@@ -194,7 +191,7 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
         </div>
       `;
       break;
-      
+
     case "aprobado":
       subject = ` Pedido #${pedidoId} aprobado`;
       icono = "";
@@ -211,7 +208,7 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
         </div>
       `;
       break;
-      
+
     //  NUEVO ESTADO: EN PROCESO (Contra Entrega)
     case "en_proceso":
       subject = `🏭 Pedido #${pedidoId} en proceso de producción`;
@@ -230,7 +227,7 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
         <p style="margin-top: 15px; font-size: 13px; color: #6b7280;">Te avisaremos cuando tu pedido esté listo para enviar.</p>
       `;
       break;
-      
+
     //  NUEVO ESTADO: EN CAMINO (Contra Entrega)
     case "en_camino":
       subject = `🚚 Pedido #${pedidoId} en camino`;
@@ -249,7 +246,7 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
         </div>
       `;
       break;
-      
+
     case "entregado":
       subject = `📦 Pedido #${pedidoId} entregado`;
       icono = "📦";
@@ -266,7 +263,7 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
         </div>
       `;
       break;
-      
+
     case "cancelado":
       subject = `❌ Pedido #${pedidoId} cancelado`;
       icono = "❌";
@@ -283,7 +280,7 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
         </div>
       `;
       break;
-      
+
     case "finalizado":
       subject = `✨ Pedido #${pedidoId} finalizado`;
       icono = "✨";
@@ -297,12 +294,12 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
         <p>Gracias por confiar en nosotros. Esperamos verte pronto.</p>
       `;
       break;
-      
+
     default:
       return; // No enviar para estados no manejados
   }
 
-  
+
   if (!subject) {
     return;
   }
@@ -391,13 +388,13 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
             <div class="content">
               <div style="text-align: center;">
                 <span class="status-badge" style="background-color: ${color}20; color: ${color}; border: 1px solid ${color}40;">
-                  ${icono} ${nuevoEstado === 'pendiente' ? 'Pendiente' : 
-                     nuevoEstado === 'aprobado' ? 'Aprobado' :
-                     nuevoEstado === 'en_proceso' ? 'En Proceso' :
-                     nuevoEstado === 'en_camino' ? 'En Camino' :
-                     nuevoEstado === 'entregado' ? 'Entregado' :
-                     nuevoEstado === 'finalizado' ? 'Finalizado' :
-                     nuevoEstado === 'cancelado' ? 'Cancelado' : nuevoEstado}
+                  ${icono} ${nuevoEstado === 'pendiente' ? 'Pendiente' :
+          nuevoEstado === 'aprobado' ? 'Aprobado' :
+            nuevoEstado === 'en_proceso' ? 'En Proceso' :
+              nuevoEstado === 'en_camino' ? 'En Camino' :
+                nuevoEstado === 'entregado' ? 'Entregado' :
+                  nuevoEstado === 'finalizado' ? 'Finalizado' :
+                    nuevoEstado === 'cancelado' ? 'Cancelado' : nuevoEstado}
                 </span>
               </div>
               
