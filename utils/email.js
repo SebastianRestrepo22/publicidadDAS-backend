@@ -818,3 +818,213 @@ export const sendVentaRechazadaEmail = async (to, nombreCliente, ventaId, total,
 
   return sendEmail(to, subject, html);
 };
+
+export const sendPasswordRecoveryEmail = async (correo, token) => {
+  const frontendBaseUrl = process.env.FRONTEND_URL;
+  const resetUrl = `${frontendBaseUrl}/reset-password/${token}`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Recuperar Contraseña</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          margin: 0;
+          padding: 0;
+          background-color: #f7fafc;
+        }
+        .container {
+          max-width: 600px;
+          margin: 0 auto;
+          background: white;
+          border-radius: 10px;
+          overflow: hidden;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          border: 1px solid #e2e8f0;
+        }
+        .header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          padding: 30px 20px;
+          text-align: center;
+          color: white;
+        }
+        .header h1 {
+          margin: 0;
+          font-size: 24px;
+          font-weight: 600;
+        }
+        .content {
+          padding: 40px 30px;
+        }
+        .message {
+          font-size: 16px;
+          color: #4a5568;
+          margin-bottom: 25px;
+        }
+        .reset-box {
+          background: #f8fafc;
+          border: 2px dashed #cbd5e0;
+          border-radius: 8px;
+          padding: 25px;
+          text-align: center;
+          margin: 30px 0;
+        }
+        .reset-button {
+          display: inline-block;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          text-decoration: none;
+          padding: 14px 28px;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 16px;
+          transition: all 0.3s ease;
+        }
+        .reset-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+        }
+        .token-info {
+          background: #fff5f5;
+          border: 1px solid #fed7d7;
+          border-radius: 6px;
+          padding: 15px;
+          margin-top: 20px;
+          font-size: 14px;
+          color: #c53030;
+          text-align: center;
+        }
+        .help-text {
+          font-size: 14px;
+          color: #718096;
+          margin-top: 20px;
+          text-align: center;
+        }
+        .footer {
+          background: #edf2f7;
+          padding: 20px;
+          text-align: center;
+          color: #718096;
+          font-size: 12px;
+          border-top: 1px solid #e2e8f0;
+        }
+        .warning {
+          background: #fffaf0;
+          border: 1px solid #feebc8;
+          border-radius: 6px;
+          padding: 15px;
+          margin: 20px 0;
+          color: #c05621;
+          font-size: 14px;
+        }
+        .link-alt {
+          word-break: break-all;
+          font-size: 12px;
+          color: #4a5568;
+          margin-top: 10px;
+          padding: 10px;
+          background: #f1f5f9;
+          border-radius: 4px;
+        }
+        .spam-note {
+          margin-top: 20px;
+          font-size: 12px;
+          text-align: center;
+          color: #718096;
+          border-top: 1px solid #e2e8f0;
+          padding-top: 15px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🔐 Recuperación de Contraseña</h1>
+        </div>
+        
+        <div class="content">
+          <p class="message">Hola,</p>
+          
+          <p class="message">
+            Hemos recibido una solicitud para restablecer la contraseña de tu cuenta. 
+            Si no realizaste esta solicitud, puedes ignorar este correo.
+          </p>
+          
+          <div class="reset-box">
+            <p style="margin-bottom: 20px; color: #2d3748; font-weight: 500;">
+              Para continuar con el proceso de recuperación, haz clic en el siguiente botón:
+            </p>
+            
+            <a href="${resetUrl}" class="reset-button">
+              🚀 Restablecer mi contraseña
+            </a>
+            
+            <div class="link-alt">
+              Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
+              <a href="${resetUrl}" style="color: #4299e1;">${resetUrl}</a>
+            </div>
+          </div>
+          
+          <div class="warning">
+            ⚠️ <strong>Importante:</strong> Este enlace tiene una validez de <strong>24 horas</strong>. 
+            Por seguridad, no lo compartas con nadie.
+          </div>
+          
+          <p class="help-text">
+            Si tienes problemas para acceder al enlace o necesitas ayuda adicional, 
+            por favor contacta a nuestro equipo de soporte.
+          </p>
+          
+          <div class="spam-note">
+            📧 Si no ves este correo en tu bandeja de entrada, revisa tu carpeta de spam o correo no deseado.
+          </div>
+        </div>
+        
+        <div class="footer">
+          <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
+          <p>© ${new Date().getFullYear()} PublicidadDAS. Todos los derechos reservados.</p>
+          <p style="margin-top: 10px; font-size: 11px; color: #a0aec0;">
+            🔒 Por tu seguridad, nunca te pediremos tu contraseña por correo electrónico.
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `
+RECUPERACIÓN DE CONTRASEÑA
+
+Hola,
+
+Hemos recibido una solicitud para restablecer la contraseña de tu cuenta. 
+Si no realizaste esta solicitud, puedes ignorar este correo.
+
+Para continuar con el proceso de recuperación, accede al siguiente enlace:
+${resetUrl}
+
+⚠️ IMPORTANTE:
+- Este enlace tiene una validez de 24 horas
+- Por seguridad, no lo compartas con nadie
+- Si tienes problemas, contacta a nuestro equipo de soporte
+
+Si el botón no funciona, copia y pega este enlace en tu navegador:
+${resetUrl}
+
+📧 Si no ves este correo en tu bandeja de entrada, revisa tu carpeta de spam o correo no deseado.
+
+---
+Este es un correo automático, por favor no respondas a este mensaje.
+© ${new Date().getFullYear()} PublicidadDAS. Todos los derechos reservados.
+
+🔒 Por tu seguridad, nunca te pediremos tu contraseña por correo electrónico.
+  `;
+
+  return sendEmail(correo, '🔐 Recuperación de contraseña', html, text);
+};
