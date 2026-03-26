@@ -396,7 +396,7 @@ export const sendPedidoEstadoEmail = async (to, nombreCliente, pedidoId, nuevoEs
           <hr />
           
           <div style="text-align: center; margin-top: 20px;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/mis-pedidos" class="button">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}" class="button">
               Ver mis pedidos
             </a>
           </div>
