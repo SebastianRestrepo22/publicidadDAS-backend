@@ -218,7 +218,7 @@ export const getProveedorById = async (req, res) => {
 };
 
 export const createProveedor = async (req, res) => {
-  const { nombreProveedor, nit, telefono, correo, direccion, estado } = req.body;
+  const { nombreProveedor, nit, telefono, correo, direccion, estado } = req.body || {};
 
   // [1] Inicio y validación campos obligatorios
   if (!nombreProveedor || !telefono || !correo || !direccion || !estado) {
@@ -318,7 +318,7 @@ export const updateProveedor = async (req, res) => {
   }
 
   // [3] Obtener req.body
-  const { nombreProveedor, nit, telefono, correo, direccion, estado } = req.body;
+  const { nombreProveedor, nit, telefono, correo, direccion, estado } = req.body || {};
 
   // [4] Try catch
   try {

@@ -449,13 +449,13 @@ export const updatePedidoCliente = async (req, res) => {
   let updates = { ...req.body };
 
   try {
-    console.log('🔍 [PEDIDOS] ===== INICIANDO ACTUALIZACIÓN =====');
-    console.log('📦 ID del pedido:', id);
+    console.log(' [PEDIDOS] ===== INICIANDO ACTUALIZACIÓN =====');
+    console.log(' ID del pedido:', id);
     if (typeof updates.pedido === 'string') {
       updates = JSON.parse(updates.pedido);
     }
-    console.log('📦 Updates recibidos:', updates);
-    console.log('📦 Archivo recibido:', req.file);
+    console.log(' Updates recibidos:', updates);
+    console.log(' Archivo recibido:', req.file);
 
     // Obtener el pedido actual
     const pedidoActual = await getPedidoClienteByIdModel(id);
