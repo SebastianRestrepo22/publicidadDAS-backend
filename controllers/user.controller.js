@@ -11,6 +11,8 @@ import {
     getUsuariosPaginated
 } from '../models/user.model.js';
 
+const frontendURL = process.env.FRONTEND_URL || "http://localhost:3000";
+
 // Crear usuario
 // 1
 export const createUser = async (req, res) => {
@@ -418,12 +420,12 @@ export const showResetForm = async (req, res) => {
 
         if (users.length === 0) {
             // Token inválido o expirado → puedes redirigir a una página de error en frontend
-            return res.redirect('http://localhost:3000/reset-password-invalid');
+           return res.redirect(`${frontendURL}/reset-password-invalid`);
         }
 
         // Redirigir al frontend pasando el token
         // Por ejemplo, tu frontend React tendría una ruta /reset-password/:token
-        res.redirect(`http://localhost:3000/reset-password/${token}`);
+        res.redirect(`${frontendURL}/reset-password/${token}`);
     } catch (error) {
         console.error(error);
         res.status(500).send('Error interno del servidor');
