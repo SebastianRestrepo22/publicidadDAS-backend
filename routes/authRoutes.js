@@ -7,7 +7,7 @@ import { dbPool } from '../lib/db.js';
 import { 
   sendResetPasswordEmail, 
   sendPasswordRecoveryEmail 
-} from './emailService.js'; // Ajusta la ruta según tu estructura
+} from '../utils/email.js';
 
 const router = express.Router();
 
