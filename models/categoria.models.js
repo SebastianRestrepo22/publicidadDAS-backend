@@ -122,3 +122,6 @@ export const buscarCategoriasPaginated = async ({ page, limit, columna, valor })
     filtroValor: valor 
   });
 };
+
+
+

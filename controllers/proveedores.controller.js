@@ -9,47 +9,60 @@ import {
   verificarCampoUnico,
 } from '../models/proveedores.models.js';
 import { v4 as uuidv4 } from 'uuid';
+import { dbPool } from '../lib/db.js';
 
 // ========== FUNCIÓN EXISTENTE ==========
 export const getAllProveedores = async (req, res) => {
+  // [1] Inicio y try
   try {
+    // [2] Ejecutar getAllProveedoresModel
     const proveedores = await getAllProveedoresModel();
+    // [3] Retornar éxito
     res.json(proveedores);
   } catch (err) {
+    // [4] Catch error
     console.error("❌ Error al obtener proveedores:", err.message);
+    // [5] Retornar 500
     res.status(500).json({ error: err.message });
   }
 };
 
-// ========== NUEVA FUNCIÓN: Validar campo único en tiempo real ==========
+// ========== Validar campo único en tiempo real ==========
 export const validarCampoUnico = async (req, res) => {
+  // [1] Inicio y try
   try {
     const { campo, valor, excludeId } = req.query;
 
+    // [2] Validar campo y valor
     if (!campo || !valor) {
+      // [3] Si falta campo/valor, retornar 400
       return res.status(400).json({
         error: 'Los campos "campo" y "valor" son obligatorios'
       });
     }
 
-    // Validar que el campo sea permitido
+    // [4] Validar camposPermitidos
     const camposPermitidos = ['nombreProveedor', 'correo', 'nit'];
     if (!camposPermitidos.includes(campo)) {
+      // [5] Si no es permitido, retornar 400
       return res.status(400).json({
         error: `Campo no válido. Use: ${camposPermitidos.join(', ')}`
       });
     }
 
-    // Verificar si el campo ya existe
+    // [6] Verificar verificarCampoUnico
     const existe = await verificarCampoUnico(campo, valor.trim(), excludeId);
 
+    // [7] Retornar json existe/disponible
     res.json({
       existe,
       mensaje: existe ? `El ${campo} ya está registrado` : 'Disponible'
     });
 
   } catch (err) {
+    // [8] Catch error
     console.error("❌ Error al validar campo único:", err.message);
+    // [9] Retornar 500
     res.status(500).json({ error: err.message });
   }
 };
@@ -57,12 +70,15 @@ export const validarCampoUnico = async (req, res) => {
 
 // ========== FUNCIÓN: Obtener proveedores con paginación ==========
 export const getProveedoresPaginated = async (req, res) => {
+  // [1] Inicio y try
   try {
+    // [2] Asignar variables page, limit, filtros
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 10, 100);
     const filtroCampo = req.query.filtroCampo || null;
     const filtroValor = req.query.filtroValor || null;
 
+    // [3] Ejecutar getProveedoresPaginatedModel
     const result = await getProveedoresPaginatedModel({
       page,
       limit,
@@ -70,14 +86,16 @@ export const getProveedoresPaginated = async (req, res) => {
       filtroValor
     });
 
-    // Si no hay datos en la página actual y es página > 1, mostrar página 1
+    // [4] Si data es vacía y page > 1 (Fallback)
     if (result.data.length === 0 && page > 1) {
+      // [5] Ejecutar Fallback page 1
       const fallback = await getProveedoresPaginatedModel({
         page: 1,
         limit,
         filtroCampo,
         filtroValor
       });
+      // [6] Retornar json fallback
       return res.status(200).json({
         data: fallback.data,
         pagination: {
@@ -91,8 +109,10 @@ export const getProveedoresPaginated = async (req, res) => {
       });
     }
 
+    // [7] Calcular totalPages normal
     const totalPages = Math.ceil(result.totalItems / limit);
 
+    // [8] Retornar json normal
     res.status(200).json({
       data: result.data,
       pagination: {
@@ -105,13 +125,16 @@ export const getProveedoresPaginated = async (req, res) => {
       }
     });
   } catch (err) {
+    // [9] Catch error
     console.error("❌ Error al obtener proveedores con paginación:", err.message);
+    // [10] Retornar 500
     res.status(500).json({ error: err.message });
   }
 };
 
 // ========== FUNCIÓN: Buscar proveedores con paginación ==========
 export const buscarProveedores = async (req, res) => {
+  // [1] Inicio y req.query
   const { campo, valor, page = 1, limit = 10 } = req.query;
 
   const columnasPermitidas = {
@@ -124,20 +147,26 @@ export const buscarProveedores = async (req, res) => {
     estado: 'Estado'
   };
 
+  // [2] Validar columna
   const columna = columnasPermitidas[campo];
   if (!columna) {
+    // [3] Si es inválida, retornar 400
     return res.status(400).json({
       message: 'Campo de búsqueda inválido. Use: id, nombre, nit, telefono, correo, direccion o estado'
     });
   }
 
+  // [4] Validar valor
   if (!valor || valor.trim() === '') {
+    // [5] Si es vacío, retornar 400
     return res.status(400).json({
       message: 'El valor de búsqueda no puede estar vacío'
     });
   }
 
+  // [6] Try catch para buscar
   try {
+    // [7] Ejecutar búsqueda
     const result = await buscarProveedoresPaginated({
       page: parseInt(page),
       limit: parseInt(limit),
@@ -145,6 +174,7 @@ export const buscarProveedores = async (req, res) => {
       valor: valor.trim()
     });
 
+    // [8] Calcular totalPages y retornar 200
     const totalPages = Math.ceil(result.totalItems / parseInt(limit));
 
     res.status(200).json({
@@ -159,7 +189,9 @@ export const buscarProveedores = async (req, res) => {
       }
     });
   } catch (err) {
+    // [9] Catch error
     console.error('❌ Error al buscar proveedores con paginación:', err);
+    // [10] Retornar 500
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
@@ -167,12 +199,20 @@ export const buscarProveedores = async (req, res) => {
 // ========== FUNCIONES CRUD ==========
 export const getProveedorById = async (req, res) => {
   const id = req.params.id;
+  // [1] Inicio y try
   try {
+    // [2] Ejecutar getProveedorByIdModel
     const proveedor = await getProveedorByIdModel(id);
-    if (!proveedor) return res.status(404).json({ message: "Proveedor no encontrado" });
+    if (!proveedor) {
+      // [3] Si no existe proveedor, retornar 404
+      return res.status(404).json({ message: "Proveedor no encontrado" });
+    }
+    // [4] Retornar json 200 proveedor
     res.json(proveedor);
   } catch (err) {
+    // [5] Catch error
     console.error("❌ Error al obtener proveedor por ID:", err.message);
+    // [6] Retornar 500
     res.status(500).json({ error: err.message });
   }
 };
@@ -180,18 +220,22 @@ export const getProveedorById = async (req, res) => {
 export const createProveedor = async (req, res) => {
   const { nombreProveedor, nit, telefono, correo, direccion, estado } = req.body;
 
+  // [1] Inicio y validación campos obligatorios
   if (!nombreProveedor || !telefono || !correo || !direccion || !estado) {
+    // [2] Si faltan campos, retornar 400
     return res.status(400).json({ error: "Todos los campos son obligatorios (NIT es opcional)" });
   }
 
+  // [3] Try catch para validación campos únicos
   try {
-    // Verificar si el nombre o correo ya existen
+    // [4] Verificar nombre y correo con Promise.all
     const [existeNombre, existeCorreo] = await Promise.all([
       verificarCampoUnico('nombreProveedor', nombreProveedor),
       verificarCampoUnico('correo', correo)
     ]);
 
     if (existeNombre) {
+      // [5] Si existeNombre, retornar 409
       return res.status(409).json({
         error: 'El nombre del proveedor ya está registrado',
         campo: 'nombreProveedor'
@@ -199,12 +243,14 @@ export const createProveedor = async (req, res) => {
     }
 
     if (existeCorreo) {
+      // [6] Si existeCorreo, retornar 409
       return res.status(409).json({
         error: 'El correo electrónico ya está registrado',
         campo: 'correo'
       });
     }
 
+    // [7] Crear UUID y ejecutar createProveedorModel
     const ProveedorId = uuidv4();
     const result = await createProveedorModel({
       ProveedorId,
@@ -216,26 +262,48 @@ export const createProveedor = async (req, res) => {
       estado
     });
 
+    // [8] Retornar 201 json éxito
     res.status(201).json({
       message: "Proveedor creado correctamente",
       proveedor: { ProveedorId, nombreProveedor, nit, telefono, correo, direccion, estado }
     });
   } catch (err) {
+    // [9] Catch error
     console.error("❌ Error al crear proveedor:", err.message);
+    // [10] Retornar 500
     res.status(500).json({ error: err.message });
   }
 };
 
 export const deleteProveedor = async (req, res) => {
   const id = req.params.id;
+  // [1] Inicio y try
   try {
+    // [2] Verificar si tiene compras asociadas
+    const [compras] = await dbPool.execute(
+      "SELECT COUNT(*) as total FROM compras WHERE ProveedorId = ?",
+      [id]
+    );
+
+    if (compras[0].total > 0) {
+      // [3] Si compras > 0, retornar 400
+      return res.status(400).json({ 
+        error: "No se puede eliminar el proveedor porque tiene compras registradas en el sistema." 
+      });
+    }
+
+    // [4] Ejecutar deleteProveedorModel
     const result = await deleteProveedorModel(id);
     if (result.affectedRows === 0) {
+      // [5] Si affectedRows === 0, retornar 404
       return res.status(404).json({ message: "Proveedor no encontrado" });
     }
+    // [6] Retornar 200 json éxito
     res.json({ message: "Proveedor eliminado correctamente" });
   } catch (err) {
+    // [7] Catch error
     console.error("❌ Error al eliminar proveedor:", err.message);
+    // [8] Retornar 500
     res.status(500).json({ error: err.message });
   }
 };
@@ -243,20 +311,25 @@ export const deleteProveedor = async (req, res) => {
 export const updateProveedor = async (req, res) => {
   const id = req.params.id;
   
+  // [1] Inicio y validación ID
   if (!id || id.length !== 36) {
+    // [2] Si ID es inválido, retornar 400
     return res.status(400).json({ error: "ID inválido" });
   }
 
+  // [3] Obtener req.body
   const { nombreProveedor, nit, telefono, correo, direccion, estado } = req.body;
 
+  // [4] Try catch
   try {
-    // Verificar si el nombre o correo ya existen (excluyendo el registro actual)
+    // [5] Verificar nombre y correo con Promise.all
     const [existeNombre, existeCorreo] = await Promise.all([
       verificarCampoUnico('nombreProveedor', nombreProveedor, id),
       verificarCampoUnico('correo', correo, id)
     ]);
 
     if (existeNombre) {
+      // [6] Si existeNombre, retornar 409
       return res.status(409).json({
         error: 'El nombre del proveedor ya está registrado',
         campo: 'nombreProveedor'
@@ -264,12 +337,14 @@ export const updateProveedor = async (req, res) => {
     }
 
     if (existeCorreo) {
+      // [7] Si existeCorreo, retornar 409
       return res.status(409).json({
         error: 'El correo electrónico ya está registrado',
         campo: 'correo'
       });
     }
 
+    // [8] Ejecutar updateProveedorModel
     const result = await updateProveedorModel(id, {
       nombreProveedor,
       nit: nit || null,
@@ -280,12 +355,16 @@ export const updateProveedor = async (req, res) => {
     });
 
     if (result.affectedRows === 0) {
+      // [9] Si affectedRows === 0, retornar 404
       return res.status(404).json({ message: "Proveedor no encontrado" });
     }
 
+    // [10] Retornar 200 json éxito
     res.json({ message: "Proveedor actualizado correctamente" });
   } catch (err) {
+    // [11] Catch error
     console.error("❌ Error al actualizar proveedor:", err);
+    // [12] Retornar 500
     res.status(500).json({ error: err.message });
   }
 };

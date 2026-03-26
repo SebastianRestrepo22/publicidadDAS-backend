@@ -443,17 +443,31 @@ export const createPedidoCliente = async (req, res) => {
   }
 };
 
-//✅ ACTUALIZAR PEDIDO (CON SOPORTE PARA VOUCHER)
+//✅ ACTUALIZAR PEDIDO (CON SOPORTE PARA VOUCHER Y DETALLES)
 export const updatePedidoCliente = async (req, res) => {
   const { id } = req.params;
   let updates = { ...req.body };
 
   try {
+    console.log('🔍 [PEDIDOS] ===== INICIANDO ACTUALIZACIÓN =====');
+    console.log('📦 ID del pedido:', id);
+    if (typeof updates.pedido === 'string') {
+      updates = JSON.parse(updates.pedido);
+    }
+    console.log('📦 Updates recibidos:', updates);
+    console.log('📦 Archivo recibido:', req.file);
 
     // Obtener el pedido actual
     const pedidoActual = await getPedidoClienteByIdModel(id);
     if (!pedidoActual) {
       return res.status(404).json({ message: 'Pedido no encontrado.' });
+    }
+
+    // Extraer detalles si vienen en el payload para actualizarlos luego
+    let detallesRequest = null;
+    if (updates.detalle) {
+      detallesRequest = updates.detalle;
+      delete updates.detalle;
     }
 
     // Si viene un archivo, construir la URL del voucher
@@ -502,6 +516,37 @@ export const updatePedidoCliente = async (req, res) => {
 
     // Actualizar el pedido
     const result = await updatePedidoClienteModel(id, updates);
+
+    // Actualizar detalles si venían en la petición
+    if (detallesRequest && Array.isArray(detallesRequest)) {
+      console.log(`📦 Actualizando ${detallesRequest.length} detalles del pedido...`);
+      // Eliminar actuales
+      await deleteDetallesByPedidoIdModel(id);
+      
+      // Insertar nuevos
+      for (let i = 0; i < detallesRequest.length; i++) {
+        const item = detallesRequest[i];
+        
+        // Determinar IDs válidos (no cadenas vacías)
+        const ProductoId = item.ProductoId?.trim() ? item.ProductoId : null;
+        const ServicioId = item.ServicioId?.trim() ? item.ServicioId : null;
+        
+        await createDetallePedidoModel({
+          DetallePedidoClienteId: item.DetallePedidoClienteId || uuidv4(),
+          PedidoClienteId: id,
+          ProductoId: ProductoId,
+          ServicioId: ServicioId,
+          Cantidad: item.Cantidad ? parseInt(item.Cantidad) : 1,
+          Precio: parseFloat(item.Precio) || 0,
+          ColorId: item.ColorId || null,
+          Tamaño: null,
+          Descripcion: item.Descripcion || null,
+          UrlImagen: item.UrlImagen || null,
+          UrlImagenPersonalizada: null,
+          Subtotal: parseFloat(((item.Cantidad || 1) * (item.Precio || 0)).toFixed(2))
+        });
+      }
+    }
 
     // Obtener el pedido actualizado
     const updated = await getPedidoClienteByIdModel(id);
