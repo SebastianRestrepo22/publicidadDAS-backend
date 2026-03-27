@@ -330,9 +330,7 @@ export const createPedidoCliente = async (req, res) => {
       ? FechaRegistro.split("T")[0]
       : new Date().toISOString().split("T")[0];
 
-    // NUEVA LÓGICA:
-    // - Admin: estado = 'pendiente' (aparece en módulo de pedidos)
-    // - Landing: estado = 'pendiente' pero va directamente a ventas
+    // Determinar si es pedido de cliente (landing) o de admin
     const esLanding = Origen === 'cliente';
     const estadoInicial = "pendiente"; // AMBOS COMIENZAN COMO PENDIENTE
 
@@ -398,10 +396,25 @@ export const createPedidoCliente = async (req, res) => {
 
     // Obtener pedido completo
     const pedidoCompleto = await getPedidoClienteByIdModel(nuevoPedido.PedidoClienteId);
-    pedidoCompleto.detalle = await getDetallePedidoByPedidoIdModel(nuevoPedido.PedidoClienteId)
+    pedidoCompleto.detalle = await getDetallePedidoByPedidoIdModel(nuevoPedido.PedidoClienteId);
 
-    // Enviar email de confirmación
-    if (pedidoCompleto.ClienteId) {
+    // SOLO si es pedido de cliente, crear venta automáticamente
+    if (esLanding) {
+      try {
+        const resultadoVenta = await crearVentaDesdePedidoId(nuevoPedido.PedidoClienteId, null);
+        console.log(`✅ Venta creada automáticamente para pedido de cliente: ${resultadoVenta.VentaId}`);
+        pedidoCompleto.ventaCreada = {
+          id: resultadoVenta.VentaId,
+          estado: resultadoVenta.venta?.Estado || 'pendiente'
+        };
+      } catch (ventaError) {
+        console.error('❌ Error al crear venta automática para pedido de cliente:', ventaError);
+        pedidoCompleto.errorVenta = ventaError.message;
+      }
+    }
+
+    // Enviar email de confirmación (solo para pedidos de cliente)
+    if (esLanding && pedidoCompleto.ClienteId) {
       const cliente = await getClienteByIdModel(pedidoCompleto.ClienteId);
       if (cliente?.CorreoElectronico) {
         await sendPedidoEstadoEmail(
@@ -409,9 +422,19 @@ export const createPedidoCliente = async (req, res) => {
           cliente.NombreCompleto || `${cliente.Nombre} ${cliente.Apellido}`,
           nuevoPedido.PedidoClienteId,
           pedidoCompleto.Estado,
-          esLanding
-            ? "Tu pedido ha sido recibido y está pendiente de confirmación"
-            : "Tu pedido ha sido recibido y está pendiente de confirmación"
+          "Tu pedido ha sido recibido y está pendiente de confirmación de pago"
+        );
+      }
+    } else if (!esLanding && pedidoCompleto.ClienteId) {
+      // Email para pedidos de admin (opcional)
+      const cliente = await getClienteByIdModel(pedidoCompleto.ClienteId);
+      if (cliente?.CorreoElectronico) {
+        await sendPedidoEstadoEmail(
+          cliente.CorreoElectronico,
+          cliente.NombreCompleto || `${cliente.Nombre} ${cliente.Apellido}`,
+          nuevoPedido.PedidoClienteId,
+          pedidoCompleto.Estado,
+          "Tu pedido ha sido recibido y está pendiente de confirmación"
         );
       }
     }

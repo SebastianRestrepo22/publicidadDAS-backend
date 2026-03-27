@@ -18,12 +18,24 @@ const sendEmail = async (to, subject, html, text = '') => {
       from: { email: FROM_EMAIL, name: FROM_NAME },
       subject,
       html,
-      text: text || html.replace(/<[^>]*>/g, ''), // texto plano básico si no se provee
+      text: text || html.replace(/<[^>]*>/g, ''),
     };
-    await sgMail.send(msg);
+    const response = await sgMail.send(msg);
+    console.log(`✅ Email enviado a ${to}: ${subject}`);
     return true;
   } catch (error) {
-    console.error('❌ Error SendGrid:', error.response?.body || error.message);
+    // Log completo del error
+    console.error('❌ Error SendGrid:');
+    console.error('   To:', to);
+    console.error('   Subject:', subject);
+    console.error('   Error:', error.response?.body || error.message);
+    console.error('   Status:', error.response?.statusCode);
+    
+    // Si es error de límite, loguear especialmente
+    if (error.response?.statusCode === 429) {
+      console.error('⚠️ LÍMITE DE ENVÍOS ALCANZADO');
+    }
+    
     return false;
   }
 };
