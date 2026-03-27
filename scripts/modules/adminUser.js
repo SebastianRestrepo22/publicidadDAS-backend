@@ -21,7 +21,7 @@ export const initializeAdminUser = async (connection, roles) => {
             cedula: "1000000000",
             nombre: 'Administrador',
             telefono: '0000000000',
-            email: 'admin@gmail.com',
+            email: 'publicidaddas470@gmail.com',
             direccion: 'N/A',
             password: 'admin123'
         };

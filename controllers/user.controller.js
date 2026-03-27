@@ -197,6 +197,20 @@ export const updateUser = async (req, res) => {
 
         const currentUser = rows[0];
 
+        // Proteger usuario del sistema (admin principal)
+        if (currentUser.IsSystem) {
+            const newRoleId = req.body.RoleId;
+            const newEmail = req.body.CorreoElectronico;
+
+            // Solo bloquear si se intenta cambiar el rol o el correo
+            if ((newRoleId !== undefined && newRoleId != currentUser.RoleId) ||
+                (newEmail !== undefined && newEmail !== currentUser.CorreoElectronico)) {
+                return res.status(403).json({
+                    message: 'No se puede modificar el rol ni el correo del usuario administrador principal del sistema.'
+                });
+            }
+        }
+
         // Obtener RoleId del cliente
         const rolesCliente = await rolCliente();
         const clienteRoleId = rolesCliente[0]?.RoleId;
@@ -208,7 +222,7 @@ export const updateUser = async (req, res) => {
             });
         }
 
-        // Crear objeto con campos actualizados - IMPORTANTE: Incluir RoleId del body
+        // Crear objeto con campos actualizados
         const updatedUser = {
             TipoDocumentoId: req.body.TipoDocumentoId ?? currentUser.TipoDocumentoId,
             NombreCompleto: req.body.NombreCompleto ?? currentUser.NombreCompleto,
@@ -220,14 +234,12 @@ export const updateUser = async (req, res) => {
 
         await updateDataUser({ id, updatedUser });
 
-        // Obtener el usuario actualizado con información del rol
-        const users = await obtenerUsuarioActualizado(id)
-
+        const users = await obtenerUsuarioActualizado(id);
         const userUpdated = users[0];
 
         res.status(200).json({
             message: 'Usuario actualizado correctamente',
-            user: userUpdated // Devolver el usuario actualizado
+            user: userUpdated
         });
 
     } catch (error) {
