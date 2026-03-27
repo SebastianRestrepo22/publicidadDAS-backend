@@ -1,6 +1,6 @@
 import { dbPool } from '../lib/db.js';
 
-// Crear producto - Ahora incluye UsaColores y Stock (opcional)
+// Crear producto
 export const createProducto = async ({
   ProductoId,
   Nombre,
@@ -15,7 +15,7 @@ export const createProducto = async ({
   await dbPool.query(
     `INSERT INTO productos 
      (ProductoId, Nombre, Descripcion, Imagen, Precio, Descuento, CategoriaId, UsaColores, Stock, Estado)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,  // 🔥 Stock siempre 0
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     [
       ProductoId,
       Nombre,
@@ -29,18 +29,17 @@ export const createProducto = async ({
     ]
   );
 };
+
 // Obtener producto por ID
 export const getDataProductoById = async (ProductoId) => {
   const [rows] = await dbPool.query(
-    `SELECT * 
-     FROM productos 
-     WHERE ProductoId = ?`,
+    `SELECT * FROM productos WHERE ProductoId = ?`,
     [ProductoId]
   );
   return rows;
 };
 
-// Obtener todos los productos - Optimizada para el nuevo esquema
+// Obtener todos los productos - Usa productocolores_stock
 export const getDataAllProductos = async (soloActivos = false) => {
   const [rows] = await dbPool.query(`
     SELECT
@@ -51,7 +50,7 @@ export const getDataAllProductos = async (soloActivos = false) => {
       p.Precio,
       p.Descuento,
       p.CategoriaId,
-      p.UsaColores,  -- ← Esto es un número 0 o 1
+      p.UsaColores,
       p.Estado,
       p.Stock AS StockGeneral,
       c.ColorId,
@@ -59,16 +58,15 @@ export const getDataAllProductos = async (soloActivos = false) => {
       c.Hex,
       COALESCE(pcs.Stock, 0) AS StockColor
     FROM productos p
-    LEFT JOIN ProductoColores pc ON pc.ProductoId = p.ProductoId
-    LEFT JOIN colores c ON c.ColorId = pc.ColorId
-    LEFT JOIN ProductoColores_Stock pcs ON pcs.ProductoId = p.ProductoId AND pcs.ColorId = c.ColorId
+    LEFT JOIN productocolores_stock pcs ON pcs.ProductoId = p.ProductoId
+    LEFT JOIN colores c ON c.ColorId = pcs.ColorId
     ${soloActivos ? "WHERE p.Estado = 'Activo'" : ""}
     ORDER BY p.Nombre
   `);
   return rows;
 };
 
-// Actualizar producto
+// Actualizar producto (no toca colores)
 export const updateDataProducto = async ({
   ProductoId,
   Nombre,
@@ -111,24 +109,19 @@ export const updateDataProducto = async ({
     campos.push('UsaColores = ?');
     valores.push(UsaColores);
   }
-  // ❌ NO incluir Stock
   if (Estado !== undefined) {
     campos.push('Estado = ?');
     valores.push(Estado);
   }
 
-  if (campos.length === 0) {
-    return 0; 
-  }
+  if (campos.length === 0) return 0;
 
   valores.push(ProductoId);
-
   const query = `UPDATE productos SET ${campos.join(', ')} WHERE ProductoId = ?`;
-  
   const [rows] = await dbPool.query(query, valores);
-  
   return rows.affectedRows;
 };
+
 export const findDuplicateName = async ({ ProductoId, Nombre }) => {
   const [rows] = await dbPool.query(
     'SELECT ProductoId FROM productos WHERE Nombre = ? AND ProductoId != ?',
@@ -137,14 +130,13 @@ export const findDuplicateName = async ({ ProductoId, Nombre }) => {
   return rows;
 };
 
-// Eliminar producto
+// Eliminar producto - Usa productocolores_stock
 export const deleteDataProducto = async (ProductoId) => {
   const connection = await dbPool.getConnection();
   
   try {
     await connection.beginTransaction();
 
-    // Primero verificar que el producto esté inactivo
     const [producto] = await connection.query(
       `SELECT Estado FROM productos WHERE ProductoId = ?`,
       [ProductoId]
@@ -158,26 +150,13 @@ export const deleteDataProducto = async (ProductoId) => {
       throw new Error('Solo se pueden eliminar productos inactivos');
     }
 
-    // Verificar que no tenga colores asociados
-    const [colores] = await connection.query(
-      `SELECT COUNT(*) as count FROM ProductoColores WHERE ProductoId = ?`,
+    // 🔥 Eliminar registros de productocolores_stock
+    await connection.query(
+      `DELETE FROM productocolores_stock WHERE ProductoId = ?`,
       [ProductoId]
     );
 
-    if (colores[0].count > 0) {
-      // EN LUGAR DE LANZAR ERROR, ELIMINAR PRIMERO LAS RELACIONES
-      await connection.query(
-        `DELETE FROM ProductoColores_Stock WHERE ProductoId = ?`,
-        [ProductoId]
-      );
-      
-      await connection.query(
-        `DELETE FROM ProductoColores WHERE ProductoId = ?`,
-        [ProductoId]
-      );
-    }
-
-    // Verificar otras relaciones (detallecompras, detallepedidosclientes, detalleventas)
+    // Verificar transacciones
     const [detalleCompras] = await connection.query(
       `SELECT COUNT(*) as count FROM detallecompras WHERE ProductoId = ?`,
       [ProductoId]
@@ -197,12 +176,7 @@ export const deleteDataProducto = async (ProductoId) => {
       throw new Error('No se puede eliminar producto con transacciones asociadas');
     }
 
-    // Finalmente eliminar el producto
-    await connection.query(
-      `DELETE FROM productos WHERE ProductoId = ?`, 
-      [ProductoId]
-    );
-
+    await connection.query(`DELETE FROM productos WHERE ProductoId = ?`, [ProductoId]);
     await connection.commit();
     return { affectedRows: 1 };
     
@@ -225,15 +199,8 @@ export const nombreProductoExiste = async (Nombre) => {
 
 export const buscarProductoDB = async ({ columna, operador, parametro }) => {
   const columnasSeguras = [
-    'Nombre',
-    'Descripcion',
-    'Imagen',
-    'Precio',
-    'Descuento',
-    'CategoriaId',
-    'UsaColores',
-    'Stock',
-    'Estado'  // Agregado
+    'Nombre', 'Descripcion', 'Imagen', 'Precio', 'Descuento',
+    'CategoriaId', 'UsaColores', 'Stock', 'Estado'
   ];
 
   if (!columnasSeguras.includes(columna)) {
@@ -248,6 +215,7 @@ export const buscarProductoDB = async ({ columna, operador, parametro }) => {
   return productos;
 };
 
+// getProductosPaginated - Ya está bien, usa productocolores_stock
 export const getProductosPaginated = async ({ 
   page = 1, 
   limit = 10, 
@@ -259,13 +227,11 @@ export const getProductosPaginated = async ({
   let whereConditions = [];
   let params = [];
 
-  // Filtro por estado
   if (estado && ['Activo', 'Inactivo'].includes(estado)) {
     whereConditions.push('Estado = ?');
     params.push(estado);
   }
 
-  // Mapeo de campos del frontend a columnas reales
   const columnasMap = {
     nombre: 'Nombre',
     descripcion: 'Descripcion',
@@ -292,23 +258,12 @@ export const getProductosPaginated = async ({
     }
   }
 
-  const whereClause = whereConditions.length > 0 
-    ? `WHERE ${whereConditions.join(' AND ')}` 
-    : '';
+  const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
-  // Obtener productos con paginación
   const [productos] = await dbPool.query(`
     SELECT 
-      ProductoId,
-      Nombre,
-      Descripcion,
-      Imagen,
-      Precio,
-      Descuento,
-      CategoriaId,
-      UsaColores,
-      Estado,
-      Stock AS StockGeneral
+      ProductoId, Nombre, Descripcion, Imagen, Precio, Descuento,
+      CategoriaId, UsaColores, Estado, Stock AS StockGeneral
     FROM productos
     ${whereClause}
     ORDER BY Nombre
@@ -316,9 +271,7 @@ export const getProductosPaginated = async ({
   `, [...params, limit, offset]);
 
   const [countResult] = await dbPool.query(`
-    SELECT COUNT(*) as total 
-    FROM productos
-    ${whereClause}
+    SELECT COUNT(*) as total FROM productos ${whereClause}
   `, params);
 
   if (productos.length === 0) {
@@ -331,7 +284,6 @@ export const getProductosPaginated = async ({
     };
   }
 
-  // 🔥 Obtener colores desde COMPRAS (no desde productocolores)
   const productoIds = productos.map(p => p.ProductoId);
   
   const [coloresDesdeCompras] = await dbPool.query(`
@@ -347,7 +299,6 @@ export const getProductosPaginated = async ({
     WHERE dc.ProductoId IN (?) AND dc.ColorId IS NOT NULL
   `, [productoIds]);
 
-  // 🔥 También obtener colores que puedan tener stock inicial (de compras anteriores)
   const [coloresConStock] = await dbPool.query(`
     SELECT 
       pcs.ProductoId,
@@ -360,9 +311,7 @@ export const getProductosPaginated = async ({
     WHERE pcs.ProductoId IN (?) AND pcs.Stock > 0
   `, [productoIds]);
 
-  // Combinar resultados únicos
   const coloresMap = new Map();
-  
   [...coloresDesdeCompras, ...coloresConStock].forEach(color => {
     const key = `${color.ProductoId}-${color.ColorId}`;
     if (!coloresMap.has(key) || coloresMap.get(key).StockColor < color.StockColor) {
@@ -371,8 +320,6 @@ export const getProductosPaginated = async ({
   });
 
   const coloresUnicos = Array.from(coloresMap.values());
-
-  // Construir objeto de productos
   const productosMap = {};
   
   productos.forEach(producto => {
@@ -387,11 +334,10 @@ export const getProductosPaginated = async ({
       UsaColores: parseInt(producto.UsaColores),
       Estado: producto.Estado || 'Activo',
       Stock: producto.StockGeneral,
-      Colores: []  // Se llenará con los colores que vienen de compras
+      Colores: []
     };
   });
 
-  // Agregar colores a los productos
   coloresUnicos.forEach(color => {
     if (productosMap[color.ProductoId]) {
       productosMap[color.ProductoId].Colores.push({

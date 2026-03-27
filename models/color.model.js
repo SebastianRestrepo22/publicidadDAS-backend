@@ -14,12 +14,11 @@ export const getColoresByProductoId = async (ProductoId) => {
       c.Nombre, 
       c.Hex,
       COALESCE(pcs.Stock, 0) AS Stock
-    FROM ProductoColores pc
-    JOIN colores c ON c.ColorId = pc.ColorId
-    LEFT JOIN ProductoColores_Stock pcs ON pcs.ProductoId = pc.ProductoId AND pcs.ColorId = pc.ColorId
-    WHERE pc.ProductoId = ?
+    FROM productocolores_stock pcs
+    INNER JOIN colores c ON c.ColorId = pcs.ColorId
+    WHERE pcs.ProductoId = ?
     ORDER BY c.Nombre
-  `, [ProductoId]);
+  `, [ProductoId]);  // 🔥 Ahora usamos directamente productocolores_stock
   return rows;
 };
 
@@ -29,80 +28,42 @@ export const setColoresProducto = async (ProductoId, coloresConStock) => {
   try {
     await connection.beginTransaction();
 
-    // Solo actualizar UsaColores si hay colores
+    // Si hay colores, activar UsaColores = 1 y poner Stock = NULL
     if (coloresConStock.length > 0) {
-      // Si hay colores, activar UsaColores = 1
       await connection.query(
-        `UPDATE Productos 
+        `UPDATE productos 
          SET UsaColores = 1, Stock = NULL 
          WHERE ProductoId = ?`,
         [ProductoId]
       );
-    }
-    // Si el array está vacío, NO modificar UsaColores (se mantiene como estaba)
 
-    // Eliminar registros existentes
-    await connection.query(
-      "DELETE FROM ProductoColores WHERE ProductoId = ?",
-      [ProductoId]
-    );
-
-    await connection.query(
-      "DELETE FROM ProductoColores_Stock WHERE ProductoId = ?",
-      [ProductoId]
-    );
-
-    // Insertar nuevos (si hay)
-    if (coloresConStock.length > 0) {
-      // Insertar en ProductoColores (relación)
-      const valuesProductoColores = coloresConStock.map(({ ColorId }) => [ProductoId, ColorId]);
+      // Eliminar colores existentes
       await connection.query(
-        "INSERT INTO ProductoColores (ProductoId, ColorId) VALUES ?",
-        [valuesProductoColores]
+        "DELETE FROM productocolores_stock WHERE ProductoId = ?",
+        [ProductoId]
       );
 
-      // Insertar en ProductoColores_Stock (stock)
+      // Insertar nuevos colores con stock
       const valuesStock = coloresConStock.map(({ ColorId, Stock }) => [ProductoId, ColorId, Stock || 0]);
       await connection.query(
-        "INSERT INTO ProductoColores_Stock (ProductoId, ColorId, Stock) VALUES ?",
+        "INSERT INTO productocolores_stock (ProductoId, ColorId, Stock) VALUES ?",
         [valuesStock]
       );
+    } else {
+      // Si no hay colores, desactivar UsaColores y poner stock general
+      await connection.query(
+        `UPDATE productos 
+         SET UsaColores = 0, Stock = 0 
+         WHERE ProductoId = ?`,
+        [ProductoId]
+      );
+
+      // Eliminar cualquier registro de colores que pudiera quedar
+      await connection.query(
+        "DELETE FROM productocolores_stock WHERE ProductoId = ?",
+        [ProductoId]
+      );
     }
-
-    await connection.commit();
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
-  }
-};
-
-// Nueva función para quitar colores a un producto (convertir a producto sin colores)
-export const quitarColoresProducto = async (ProductoId, nuevoStockGeneral) => {
-  const connection = await dbPool.getConnection();
-
-  try {
-    await connection.beginTransaction();
-
-    // Eliminar todos los colores y stock por color
-    await connection.query(
-      "DELETE FROM ProductoColores WHERE ProductoId = ?",
-      [ProductoId]
-    );
-
-    await connection.query(
-      "DELETE FROM ProductoColores_Stock WHERE ProductoId = ?",
-      [ProductoId]
-    );
-
-    // Actualizar producto para que NO use colores y tenga stock general
-    await connection.query(
-      `UPDATE Productos 
-       SET UsaColores = 0, Stock = ? 
-       WHERE ProductoId = ?`,
-      [nuevoStockGeneral, ProductoId]
-    );
 
     await connection.commit();
   } catch (error) {
