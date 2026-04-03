@@ -48,7 +48,7 @@ export const getCompraById = async (req, res) => {
   }
 };
 
-// ➕ Crear nueva compra - SIEMPRE CON ESTADO APROBADO
+// Crear nueva compra - SIEMPRE CON ESTADO APROBADO
 export const createCompra = async (req, res) => {
   // [1] Inicio del proceso POST para crear compra
   const body = req.body;
@@ -112,7 +112,7 @@ export const createCompra = async (req, res) => {
   }
 };
 
-// ✏️ Actualizar compra completa
+//  Actualizar compra completa
 export const updateCompra = async (req, res) => {
   // [1] Inicio y obtención de parámetros
   const { id } = req.params;
@@ -168,42 +168,8 @@ export const updateCompra = async (req, res) => {
   }
 };
 
-// 🗑️ Eliminar compra
-export const deleteCompra = async (req, res) => {
-  // [1] Inicio y obtención de ID
-  const { id } = req.params;
 
-  // [2] Validar formato de ID (UUID 36 caracteres)
-  if (!id || id.length !== 36) {
-    // [12] Retornar BadRequest si el ID es inválido
-    return res.status(400).json({ error: "ID de compra inválido para eliminación" });
-  }
-
-  // [3] Try catch para eliminación
-  try {
-    // [4] Eliminar los detalles de la compra (integridad referencial manual)
-    await dbPool.query('DELETE FROM detalle_compras WHERE CompraId = ?', [id]);
-    
-    // [5] Intentar eliminar la compra principal
-    const [result] = await dbPool.query('DELETE FROM compras WHERE CompraId = ?', [id]);
-    
-    // [6] Verificar si se eliminó algún registro
-    if (result.affectedRows === 0) {
-      // [13] Caso no encontrado retornar 404
-      return res.status(404).json({ message: 'Compra no encontrada' });
-    }
-    
-    // [7] Retornar 200 éxito
-    res.json({ message: 'Compra eliminada exitosamente', CompraId: id });
-  } catch (error) {
-    // [8] Catch error de servidor
-    console.error('Error al eliminar compra:', error);
-    // [9] Retornar 500
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
-
-// 📄 Compras con paginación
+//  Compras con paginación
 export const getComprasPaginated = async (req, res) => {
   // [1] Inicio y try
   try {
@@ -238,7 +204,7 @@ export const getComprasPaginated = async (req, res) => {
   }
 };
 
-// 🔍 Buscar compras
+//  Buscar compras
 export const buscarCompras = async (req, res) => {
   // [1] Inicio y try
   try {
@@ -278,4 +244,4 @@ export const buscarCompras = async (req, res) => {
     // [6] Retornar 500
     res.status(500).json({ error: 'Error interno del servidor' });
   }
-};
+};

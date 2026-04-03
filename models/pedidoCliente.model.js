@@ -93,78 +93,83 @@ export const createPedidoClienteModel = async ({
   ClienteNombre = null,
   ClienteTelefono = null,
   ClienteCorreo = null,
-  Origen = "admin" // Nuevo campo
+  Origen = "admin" 
 }) => {
-  const PedidoClienteId = uuidv4();
+  try {
+    const PedidoClienteId = uuidv4();
 
-  await dbPool.execute(
-    `
-    INSERT INTO pedidosclientes 
-    (
-      PedidoClienteId, 
-      ClienteId, 
-      FechaRegistro, 
-      Total, 
-      Estado, 
-      MetodoPago, 
-      Voucher, 
-      NombreRecibe, 
-      TelefonoEntrega, 
-      DireccionEntrega,
-      TipoCliente,
-      ClienteNombre,
-      ClienteTelefono,
-      ClienteCorreo,
-      Origen
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    [
-      PedidoClienteId,
-      ClienteId ?? null,
-      FechaRegistro,
-      Total,
-      Estado,
-      MetodoPago,
-      Voucher ?? null,
-      NombreRecibe ?? null,
-      TelefonoEntrega ?? null,
-      DireccionEntrega ?? null,
-      TipoCliente,
-      ClienteNombre ?? null,
-      ClienteTelefono ?? null,
-      ClienteCorreo ?? null,
-      Origen // Nuevo campo
-    ]
-  );
+    await dbPool.execute(
+      `
+      INSERT INTO pedidosclientes 
+      (
+        PedidoClienteId, 
+        ClienteId, 
+        FechaRegistro, 
+        Total, 
+        Estado, 
+        MetodoPago, 
+        Voucher, 
+        NombreRecibe, 
+        TelefonoEntrega, 
+        DireccionEntrega,
+        TipoCliente,
+        ClienteNombre,
+        ClienteTelefono,
+        ClienteCorreo,
+        Origen
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        PedidoClienteId,
+        ClienteId ?? null,
+        FechaRegistro,
+        Total,
+        Estado,
+        MetodoPago,
+        Voucher ?? null,
+        NombreRecibe ?? null,
+        TelefonoEntrega ?? null,
+        DireccionEntrega ?? null,
+        TipoCliente,
+        ClienteNombre ?? null,
+        ClienteTelefono ?? null,
+        ClienteCorreo ?? null,
+        Origen // Nuevo campo
+      ]
+    );
 
-  const [rows] = await dbPool.execute(
-    `
-    SELECT
-      p.PedidoClienteId,
-      p.ClienteId,
-      COALESCE(u.NombreCompleto, p.ClienteNombre) AS NombreCliente,
-      p.FechaRegistro,
-      p.Total,
-      p.Estado,
-      p.MetodoPago,
-      p.Voucher,
-      p.NombreRecibe,
-      p.TelefonoEntrega,
-      p.DireccionEntrega,
-      p.TipoCliente,
-      p.ClienteNombre,
-      p.ClienteTelefono,
-      p.ClienteCorreo,
-      p.Origen
-    FROM pedidosclientes p
-    LEFT JOIN usuarios u ON p.ClienteId = u.CedulaId
-    WHERE p.PedidoClienteId = ?
-    `,
-    [PedidoClienteId]
-  );
+    const [rows] = await dbPool.execute(
+      `
+      SELECT
+        p.PedidoClienteId,
+        p.ClienteId,
+        COALESCE(u.NombreCompleto, p.ClienteNombre) AS NombreCliente,
+        p.FechaRegistro,
+        p.Total,
+        p.Estado,
+        p.MetodoPago,
+        p.Voucher,
+        p.NombreRecibe,
+        p.TelefonoEntrega,
+        p.DireccionEntrega,
+        p.TipoCliente,
+        p.ClienteNombre,
+        p.ClienteTelefono,
+        p.ClienteCorreo,
+        p.Origen
+      FROM pedidosclientes p
+      LEFT JOIN usuarios u ON p.ClienteId = u.CedulaId
+      WHERE p.PedidoClienteId = ?
+      `,
+      [PedidoClienteId]
+    );
 
-  return rows[0];
+    return rows[0];
+  } catch (error) {
+    console.error("❌ Error en createPedidoClienteModel:", error);
+    throw error;
+  }
 };
 
 export const updatePedidoClienteModel = async (id, data) => {

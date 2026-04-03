@@ -3,7 +3,6 @@ import {
   getAllCompras,
   getCompraById,
   createCompra,
-  deleteCompra,
   updateCompra,
   getComprasPaginated,
   buscarCompras
@@ -24,7 +23,6 @@ router.get('/todas', getAllCompras);
 router.get('/:id', getCompraById);
 router.post('/', createCompra);
 router.put('/:id', updateCompra);
-router.delete('/:id', deleteCompra);
 
 
 

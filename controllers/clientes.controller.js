@@ -1,8 +1,7 @@
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import { dbPool } from '../lib/db.js';
 import dayjs from "dayjs"; // para manejar expiraciones
-import crypto from "crypto";
-import { correoExiste, createByAdmin, deleteDataUser, getAllDataClientes, getClientById, getUserSystem, obtenerUsuarioActualizado, pedidosUsuarios, telefonoDataExistente, traerDatosActuales, updateDataUser, validarDataCedula, getClientesPaginated } from '../models/user.model.js';
+import * as crypto from "crypto";
+import { correoExiste, createByAdmin, deleteDataUser, getClientById, getUserSystem, obtenerUsuarioActualizado, pedidosUsuarios, telefonoDataExistente, traerDatosActuales, updateDataUser, validarDataCedula, getClientesPaginated } from '../models/user.model.js';
 import { sendResetPasswordEmail } from '../utils/email.js';
 import { getRoleIdByName } from '../models/role.model.js';
 

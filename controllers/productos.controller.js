@@ -1,17 +1,13 @@
 import { v4 as uuidv4 } from 'uuid';
 import { dbPool } from '../lib/db.js';
 import {
-  buscarProductoDB,
   createProducto,
-  deleteDataProducto,
   findDuplicateName,
-  getDataAllProductos,
   getDataProductoById,
   nombreProductoExiste,
   updateDataProducto,
   getProductosPaginated
 } from '../models/producto.model.js';
-import { actualizarStockProducto } from '../models/detalleCompras.model.js';
 
 // Crear producto - Ahora incluye UsaColores y Stock
 export const postProducto = async (req, res) => {

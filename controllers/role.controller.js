@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { createDataRole, getDataRolesPaginated, buscarRolesPaginated, getDataRolesById, updateDataRoles, rolesAsociados, deleteDataRole, changeDataStatus, validarDataRol, buscarRolesModel, getdataPermisos, getDataRolePermissions, existenPermisos, deletePermissos, actualizarPermisos, getDataRolUser, getDataPermissonRol, systemRole } from '../models/role.model.js';
+import { createDataRole, getDataRolesPaginated, buscarRolesPaginated, getDataRolesById, updateDataRoles, rolesAsociados, deleteDataRole, changeDataStatus, validarDataRol, getdataPermisos, getDataRolePermissions, existenPermisos, deletePermissos, actualizarPermisos, getDataRolUser, getDataPermissonRol, systemRole } from '../models/role.model.js';
 
 // Crear rol
 //1. incicio
