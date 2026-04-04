@@ -35,8 +35,18 @@ dotenv.config();
 
 const app = express();
 
+// Configuración CORS más segura usando variable de entorno
+const allowedOrigins = [
+  'http://localhost:5174',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://publicidad-das-aplication.vercel.app',
+  process.env.FRONTEND_URL  
+].filter(Boolean); 
+
 app.use(cors({
   origin: function(origin, callback) {
+    // Permitir solicitudes sin origen (como Postman, móviles, etc.)
     if (!origin) return callback(null, true);
 
     if (
@@ -47,9 +57,13 @@ app.use(cors({
     ) {
       callback(null, true);
     } else {
-      callback(new Error("No permitido por CORS"));
+      console.warn(`Origen no permitido por CORS: ${origin}`);
+      callback(new Error('No permitido por CORS'));
     }
-  }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 app.use(express.json({ limit: '50mb' }));
@@ -90,7 +104,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const startServer = async () => {
   try {
-
     // inicializar roles y admin usando pool
     await initRolesAndAdmin(dbPool);
 
@@ -98,6 +111,7 @@ const startServer = async () => {
 
     app.listen(port, () => {
       console.log(`Server is running on port ${port}`);
+      console.log(`CORS permitido para: ${allowedOrigins.join(', ')}`);
     });
 
   } catch (err) {
@@ -107,4 +121,3 @@ const startServer = async () => {
 };
 
 startServer();
-
