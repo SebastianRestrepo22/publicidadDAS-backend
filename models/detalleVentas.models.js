@@ -55,8 +55,8 @@ export const createDetallesVentaFromPedidoModel = async (connection, VentaId, de
       await connection.query(
         `INSERT INTO detalleventas (
           DetalleVentaId, VentaId, TipoItem, ProductoId, ServicioId,
-          NombreSnapshot, Cantidad, PrecioUnitario, Subtotal, ColorId, DescripcionPersonalizada
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          NombreSnapshot, Cantidad, PrecioUnitario, Descuento, Subtotal, ColorId, DescripcionPersonalizada
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           DetalleVentaId,
           VentaId,
@@ -66,6 +66,7 @@ export const createDetallesVentaFromPedidoModel = async (connection, VentaId, de
           nombreSnapshot,
           detalle.Cantidad || 1,
           detalle.Precio || 0,
+          0, // Descuento por defecto 0
           subtotalDetalle,
           detalle.ColorId || null,
           detalle.Descripcion || null
