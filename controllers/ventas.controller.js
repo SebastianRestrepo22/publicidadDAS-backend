@@ -424,6 +424,7 @@ export const createDetalle = async (req, res) => {
   }
 };
 
+
 export const crearVentaDesdePedidoId = async (PedidoClienteId, UsuarioVendedorId = null) => {
   const connection = await dbPool.getConnection();
   try {
@@ -465,9 +466,11 @@ export const crearVentaDesdePedidoId = async (PedidoClienteId, UsuarioVendedorId
       throw new Error("El pedido no tiene detalles");
     }
 
-    // DETERMINAR ESTADO SEGÚN ORIGEN
+    // independientemente del método de pago
     const esLanding = pedido.Origen === 'cliente';
-    const estadoVenta = esLanding ? 'pendiente' : 'pagado';
+    const estadoVenta = 'pendiente'; // Siempre pendiente para que aparezcan en el módulo de ventas
+    
+    console.log(`💰 [VENTAS] Creando venta para pedido ${PedidoClienteId} - Origen: ${pedido.Origen} - Estado: ${estadoVenta}`);
     
     // PASAR EL ESTADO COMO QUINTO PARÁMETRO
     const result = await createVentaFromPedidoModel(pedido, UsuarioVendedorId, null, connection, estadoVenta);
@@ -486,6 +489,8 @@ export const crearVentaDesdePedidoId = async (PedidoClienteId, UsuarioVendedorId
     const ventaCreada = await getVentaByIdModel(VentaId);
     const detallesCompletos = await getDetalleVentaByVentaIdModel(VentaId);
     ventaCreada.detalle = detallesCompletos;
+
+    console.log(`✅ [VENTAS] Venta creada con ID: ${VentaId} - Estado: ${ventaCreada.Estado}`);
 
     return {
       success: true,
@@ -606,7 +611,7 @@ export const actualizarEstadoVenta = async (req, res) => {
           [venta.PedidoClienteId]
         );
 
-        if (pedido[0]?.MetodoPago === 'transferencia' || pedido[0]?.MetodoPago === 'QR') {
+        if (pedido[0]?.MetodoPago === 'transferencia' || pedido[0]?.MetodoPago === 'QR' || pedido[0]?.MetodoPago === 'qr') {
           if (ventaActualizada.ClienteCorreo) {
             await sendVentaFacturaEmail(
               ventaActualizada.ClienteCorreo,

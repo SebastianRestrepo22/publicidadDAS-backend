@@ -6,7 +6,6 @@ import {
   deleteDetallesByPedidoIdModel
 } from "../models/detallePedidoCliente.model.js";
 
-
 export const getDetallesByPedido = async (req, res) => {
   // [1] Inicio y try
   try {
@@ -132,7 +131,6 @@ export const updateDetalle = async (req, res) => {
   }
 };
 
-
 export const deleteDetalle = async (req, res) => {
   // [1] Inicio y try
   try {
@@ -181,4 +179,4 @@ export const deleteDetallesByPedido = async (req, res) => {
       details: error.message 
     });
   }
-};
+};
