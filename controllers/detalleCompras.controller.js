@@ -9,6 +9,36 @@ import {
 } from '../models/detalleCompras.model.js';
 
 
+const procesarColores = (detalle) => {
+    if (!detalle) return detalle;
+    
+    let colores = detalle.colores;
+    
+    if (typeof colores === "string") {
+        try {
+            if (colores === "[object Object]") {
+                colores = [];
+            } else if (colores.trim() === "") {
+                colores = [];
+            } else {
+                colores = JSON.parse(colores);
+            }
+        } catch (e) {
+            colores = [];
+        }
+    }
+    
+    if (!Array.isArray(colores)) {
+        colores = colores ? [colores] : [];
+    }
+    
+    return {
+        ...detalle,
+        colores
+    };
+};
+
+
 
 export const getAllDetalles = async (req, res) => {
     // [1] Inicio y try
