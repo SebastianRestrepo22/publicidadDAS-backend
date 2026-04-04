@@ -41,7 +41,9 @@ app.use(cors({
 
     if (
       origin.includes("localhost") ||
-      origin.includes("vercel.app")
+      origin.includes("vercel.app") ||
+      origin.includes("web.app") ||
+      (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL)
     ) {
       callback(null, true);
     } else {

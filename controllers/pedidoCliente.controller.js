@@ -36,8 +36,8 @@ export const getPedidosClientes = async (req, res) => {
 
     const whereConditions = [];
 
-    // [3] Filtrar por origen distinto de cliente
-    whereConditions.push(`p.Origen != 'cliente'`);
+    // [3] Filtrar por origen distinto de cliente (Removido para que los pedidos de la landing se vean en el admin)
+    // whereConditions.push(`p.Origen != 'cliente'`);
 
     // [4] Validar si hay filtro de tipo de pago
     if (tipoPago) {
@@ -188,8 +188,8 @@ export const buscarPedidos = async (req, res) => {
 
     const whereConditions = [];
 
-    // [5] Filtrar origen
-    whereConditions.push(`p.Origen != 'cliente'`);
+    // [5] Filtrar origen (Removido para que pedidos de landing aparezcan)
+    // whereConditions.push(`p.Origen != 'cliente'`);
 
     // [6] Agregar filtro de búsqueda si existe
     if (campo && valor) {
