@@ -1,5 +1,5 @@
 {
-  "name": "server",
+  "name": "q",
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
@@ -37,5 +37,13 @@
     "lib": "lib",
     "test": "tests"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SebastianRestrepo22/publicidadDAS-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SebastianRestrepo22/publicidadDAS-backend/issues"
+  },
+  "homepage": "https://github.com/SebastianRestrepo22/publicidadDAS-backend#readme",
   "description": ""
 }
